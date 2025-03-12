@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, Float, ForeignKey, func, Enum
+from sqlalchemy import Column, String, Text, DateTime, Float, func
 from sqlalchemy.orm import declarative_base, relationship
 from backend.schemas.StatusSchema import StatusEnum
 Base = declarative_base()
