@@ -13,10 +13,9 @@ class VoiceRecording(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), nullable=False)
     audio_length = Column(Float, nullable=False)
-    transcription_id = Column(String(36), nullable=True)
     file_url = Column(Text, nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    call_duration = Column(Float, nullable=False)
     created_at = Column(DateTime, default=func.current_timestamp())
     modified_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
-
-    # user = relationship("User", back_populates="recordings")
-    # transcription = relationship("Transcription", back_populates="recording")
