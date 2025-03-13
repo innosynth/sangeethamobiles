@@ -12,7 +12,7 @@ class User(Base):
     __tablename__ = "user"
     id = Column(String(36), primary_key=True, default=generate_uuid)
     name = Column(String(255), nullable=False)
-    password = Column(String, nullable=False)
+    password = Column(String(256), nullable=False)
     email = Column(String(255), nullable =False)
     user_role = Column(Enum(RoleEnum), nullable=False, default=RoleEnum.L0)
     business_key = Column(String(255), nullable=False)
