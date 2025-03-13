@@ -1,23 +1,37 @@
-from fastapi import APIRouter, File, UploadFile, Form, Depends
-import os
-import datetime
+from fastapi import APIRouter
+import uuid
 from sqlalchemy import DateTime
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException
-from backend.db.db import get_session
-from backend.AudioProcessing.voiceRecordingModel import VoiceRecording
-from backend.AudioProcessing.schema import VoiceRecordingCreate
+from db.db import get_session
+from AudioProcessing.VoiceRecordingModel import VoiceRecording
+# from backend.dependencies import get_session, get_current_user  # Assuming these dependencies exist
+
 router = APIRouter()
 
 @router.post("/upload-recording")
 def upload_recording(
-    voiceRecordingBody: VoiceRecordingCreate,
-    
+    file_url: str,
+    audio_length: float,
+    start_time: DateTime,
+    end_time: DateTime,
+    call_duration: float,
     db: Session = Depends(get_session),
-    # user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user)
 ):
-    pass
-   
+    """ Upload a new voice recording. """
+    new_recording = VoiceRecording(
+        user_id=get_current_user["id"],  # Extracted from authentication
+        file_url=file_url,
+        audio_length=audio_length,
+        start_time=start_time,
+        end_time=end_time,
+        call_duration=call_duration
+    )
+    db.add(new_recording)
+    db.commit()
+    db.refresh(new_recording)
+    return {"message": "Recording uploaded", "recording_id": new_recording.id}
 
 @router.get("/recordings")
 def get_recordings(db: Session = Depends(get_session)):

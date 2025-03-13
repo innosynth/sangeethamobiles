@@ -13,5 +13,5 @@ class Business(Base):
     business_id = Column(String(36), primary_key=True, default=generate_uuid)
     business_name = Column(String(255), nullable=False)
     business_status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.PENDING)
-    created_at = Column(DateTime, default=func.current_timestamp())
-    modified_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    created_at = Column(DateTime, default=func.current_timestamp(), nullable=True)
+    modified_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp(), nullable=True)
