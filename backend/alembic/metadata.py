@@ -7,10 +7,14 @@ from backend.Store.StoreModel import Base as StoreBase
 from backend.Business.BusinessModel import Base as BussinessBase
 from backend.Store.StoreModel import Base as StoreBase
 from backend.Business.BusinessModel import Base as BussinessBase
+from backend.Store.StoreModel import Base as StoreBase
+from backend.Business.BusinessModel import Base as BussinessBase
 
 
 target_metadata = [
     BussinessBase.metadata,
+    AreaBase.metadata,
+    UserBase.metadata,
     AreaBase.metadata,
     UserBase.metadata,
     AreaBase.metadata,
