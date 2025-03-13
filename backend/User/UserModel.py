@@ -17,6 +17,6 @@ class User(Base):
     user_role = Column(Enum(RoleEnum), nullable=False, default=RoleEnum.L0)
     business_key = Column(String(255), nullable=False)
     store_id = Column(String(36), nullable=False)
-    created_at = Column(DateTime, default=func.current_timestamp())
-    modified_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    created_at = Column(DateTime, default=func.current_timestamp(),nullable=False)
+    modified_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp(),nullable=False)
     user_status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.ACTIVE)
