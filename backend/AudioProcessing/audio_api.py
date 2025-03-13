@@ -1,0 +1,73 @@
+from fastapi import APIRouter, File, UploadFile, Form, Depends
+import os
+import datetime
+from sqlalchemy import DateTime
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
+from backend.db.db import get_session
+from backend.AudioProcessing.voiceRecordingModel import VoiceRecording
+from backend.AudioProcessing.schema import VoiceRecordingCreate
+router = APIRouter()
+
+@router.post("/upload-recording")
+def upload_recording(
+    voiceRecordingBody: VoiceRecordingCreate,
+    
+    db: Session = Depends(get_session),
+    # user: dict = Depends(get_current_user)
+):
+    pass
+   
+
+@router.get("/recordings")
+def get_recordings(db: Session = Depends(get_session)):
+    """ Get all recordings. """
+    recordings = db.query(VoiceRecording).all()
+    return {"recordings": recordings}
+
+@router.get("/recordings/{recording_id}")
+def get_recording(recording_id: str, db: Session = Depends(get_session)):
+    """ Get a specific recording by ID. """
+    recording = db.query(VoiceRecording).filter_by(id=recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    return recording
+
+@router.delete("/recordings/{recording_id}")
+def delete_recording(recording_id: str, db: Session = Depends(get_session), current_user: dict = Depends(get_current_user)):
+    """ Delete a recording by ID if the user owns it. """
+    recording = db.query(VoiceRecording).filter_by(id=recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    if recording.user_id != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    db.delete(recording)
+    db.commit()
+    return {"message": "Recording deleted"}
+
+@router.put("/recordings/{recording_id}")
+def update_recording(recording_id: str, file_url: str, db: Session = Depends(get_session), current_user: dict = Depends(get_current_user)):
+    """ Update recording details. """
+    recording = db.query(VoiceRecording).filter_by(id=recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    if recording.user_id != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    recording.file_url = file_url
+    db.commit()
+    db.refresh(recording)
+    return {"message": "Recording updated", "recording": recording}
+
+@router.get("/recordings/user/{user_id}")
+def get_recordings_by_user(user_id: str, db: Session = Depends(get_session)):
+    """ Get all recordings for a user. """
+    recordings = db.query(VoiceRecording).filter_by(user_id=user_id).all()
+    return {"recordings": recordings}
+
+@router.get("/recordings/store/{store_id}")
+def get_recordings_by_store(store_id: str, db: Session = Depends(get_session)):
+    """ Get all recordings for a store (assuming user_id represents stores). """
+    recordings = db.query(VoiceRecording).filter_by(user_id=store_id).all()
+    return {"recordings": recordings}

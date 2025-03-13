@@ -1,18 +1,18 @@
 from backend.models.AnalyticsModel import Base as AnalyticsBase  
 from backend.models.AreaModel import Base as AreaBase
-from backend.models.BussinessModel import Base as BussinessBase
-from backend.models.StoreModel import Base as StoreBase
-from backend.models.UserModel import Base as UserBase
-from backend.models.VoiceRecordingModel import Base as VoiceRecordingBase
+from backend.User.UserModel import Base as UserBase
+from backend.AudioProcessing.VoiceRecordingModel import Base as VoiceRecordingBase
 from backend.models.TranscriptionModel  import Base as TranscriptionBase
+from backend.Store.StoreModel import Base as StoreBase
+from backend.Business.BusinessModel import Base as BussinessBase
 
 
 target_metadata = [
-    AnalyticsBase.metadata,
-    AreaBase.metadata,
     BussinessBase.metadata,
-    StoreBase.metadata,
+    AreaBase.metadata,
     UserBase.metadata,
+    StoreBase.metadata,
+    TranscriptionBase.metadata,
+    AnalyticsBase.metadata,
     VoiceRecordingBase.metadata,
-    TranscriptionBase.metadata
 ]
