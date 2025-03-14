@@ -20,3 +20,14 @@ class User(Base):
     created_at = Column(DateTime, default=func.current_timestamp(),nullable=False)
     modified_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp(),nullable=False)
     user_status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.ACTIVE)
+
+
+class Staff(Base):
+    __tablename__='staff'
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False)
+    email_id = Column(String(255), nullable=False)
+    affilated_user_id = Column(String(36), nullable=False)
+    created_at = Column(DateTime, default=func.current_timestamp(),nullable=False)
+    modified_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp(),nullable=False)
+    staff_status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.ACTIVE)

@@ -5,23 +5,14 @@ from backend.AudioProcessing.VoiceRecordingModel import Base as VoiceRecordingBa
 from backend.models.TranscriptionModel  import Base as TranscriptionBase
 from backend.Store.StoreModel import Base as StoreBase
 from backend.Business.BusinessModel import Base as BussinessBase
-from backend.Store.StoreModel import Base as StoreBase
-from backend.Business.BusinessModel import Base as BussinessBase
-from backend.Store.StoreModel import Base as StoreBase
-from backend.Business.BusinessModel import Base as BussinessBase
+
 
 
 target_metadata = [
     BussinessBase.metadata,
-    AreaBase.metadata,
     UserBase.metadata,
     AreaBase.metadata,
-    UserBase.metadata,
-    AreaBase.metadata,
-    UserBase.metadata,
     StoreBase.metadata,
-    TranscriptionBase.metadata,
-    AnalyticsBase.metadata,
     TranscriptionBase.metadata,
     AnalyticsBase.metadata,
     VoiceRecordingBase.metadata,
