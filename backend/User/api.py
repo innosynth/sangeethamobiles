@@ -2,10 +2,11 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from backend.User.UserModel import User
-from backend.User.UserSchema import UserCreate, UserResponse
+from backend.User.UserModel import User, Staff
+from backend.User.UserSchema import UserCreate, UserResponse, StaffResponse, StaffCreate
 from backend.db.db import get_session
 import uuid
+from backend.auth.jwt_handler import verify_token
 # from backend.utils.password import hash_password
 from passlib.context import CryptContext
 
@@ -53,3 +54,31 @@ def read_users(db: Session = Depends(get_session)):
 
 
 
+@router.post("/add-staff", response_model=StaffResponse)
+def add_staff(
+    staff_body:StaffCreate,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token)
+    ):
+    affilated_user_id = token.get("user_id")
+    if not affilated_user_id:
+        raise HTTPException(status_code=401, detail="Invalid token or user ID missing")
+    new_staff = Staff(
+        name=staff_body.name,
+        email_id=staff_body.email_id,
+        affilated_user_id=affilated_user_id
+    )
+
+    db.add(new_staff)
+    db.commit()
+    db.refresh(new_staff)
+
+    return StaffResponse(
+        id=new_staff.id,
+        name=new_staff.name,
+        email_id=new_staff.email_id,
+        affilated_user_id=new_staff.affilated_user_id,
+        created_at=new_staff.created_at,
+        modified_at=new_staff.modified_at,
+        staff_status=new_staff.staff_status
+    )

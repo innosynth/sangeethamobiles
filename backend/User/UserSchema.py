@@ -27,3 +27,13 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True  
+
+
+class StaffResponse(BaseModel):
+    name:str
+    email_id:str
+    affilated_user_id:str
+
+class StaffCreate(BaseModel):
+    name:str
+    email_id:str
