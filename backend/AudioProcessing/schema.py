@@ -1,11 +1,10 @@
 from pydantic import BaseModel
 from datetime import datetime
 
+# class UploadRecodingBody(BaseModel):
+#     file: bytes
+#     staff_id:str
 
-class VoiceRecordingCreate(BaseModel):
-    user_id: str
-    audio_length: float
-    file_url: str
-    start_time: datetime
-    end_time: datetime
-    call_duration: float
+
+class RecordingResponse(BaseModel):
+    user_id:str
