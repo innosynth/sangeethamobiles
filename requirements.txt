@@ -6,3 +6,8 @@ PyMySQL==1.1.1
 python-dotenv==1.0.1
 SQLAlchemy==2.0.39
 typing_extensions==4.12.2
+fastapi
+passlib
+pydantic[email]
+bcrypt
+python-jose

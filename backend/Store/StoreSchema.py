@@ -21,3 +21,12 @@ class StoreResponse(StoreCreate):
 
     class Config:
         from_attributes = True  
+
+class StoreSummary(BaseModel):
+    store_id: str
+    store_name: str
+    district: str
+    state: str
+
+    class Config:
+        from_attributes = True

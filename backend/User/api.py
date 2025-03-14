@@ -20,20 +20,14 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-
-
-
-@router.post("/users/", response_model=UserResponse)
+@router.post("/create-user", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_session)):
     
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-
   
     hashed_password = hash_password(user.password)
-
-    
     db_user = User(
         id=str(uuid.uuid4()),
         name=user.name,
@@ -52,7 +46,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_session)):
 
 
 
-@router.get("/users/", response_model=list[UserResponse])
+@router.get("/get-all-users", response_model=list[UserResponse])
 def read_users(db: Session = Depends(get_session)):
     users = db.query(User).all()
     return users
