@@ -10,7 +10,7 @@ from backend.AudioProcessing.schema import RecordingResponse
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from backend.auth.jwt_handler import verify_token
 from backend.config import TenantSettings
-from backend.AudioProcessing.service import upload_recording
+from backend.AudioProcessing.service import upload_recording as upload_recording_service
 
 
 router = APIRouter()
@@ -26,6 +26,11 @@ def upload_recording(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token)
 ):
-    CallRecoding = upload_recording(Recording, staff_id, start_time, end_time, CallDuration, db, token)
+    CallRecoding = upload_recording_service(Recording, staff_id, start_time, end_time, CallDuration, db, token)
 
-    return{"Status":1,"Msg":"Created Successfully","CallRecordingKey":CallRecoding}
+    user_id = token.get("user_id")  # Ensure this key exists in your token
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID missing from token")
+
+    return{"Status":1,"Msg":"Created Successfully","user_id": user_id,"CallRecordingKey":CallRecoding}

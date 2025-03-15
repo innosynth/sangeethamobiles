@@ -30,3 +30,4 @@ class TenantSettings(BaseSettings):
         env_file = get_env_file()
         env_file_encoding = "utf-8"
         
+

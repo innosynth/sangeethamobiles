@@ -6,7 +6,12 @@ from datetime import datetime
 from backend.config import TenantSettings
 
 
+
 settings = TenantSettings()
+
+def file_storage(file_name, f_name):
+    print("BASE_UPLOAD_FOLDER in file_storage:", settings.BASE_UPLOAD_FOLDER)
+
 
 def file_storage(file_name,f_name):
     base_dir = settings.BASE_UPLOAD_FOLDER+"/upload_files"
