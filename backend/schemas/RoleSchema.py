@@ -1,5 +1,6 @@
 import enum
 
+
 class RoleEnum(enum.IntEnum):
     L3 = 3
     L2 = 2

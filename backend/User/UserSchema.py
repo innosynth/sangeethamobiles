@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+
 # from enum import Enum
 from datetime import datetime
 from backend.schemas.StatusSchema import StatusEnum
@@ -9,7 +10,7 @@ class UserCreate(BaseModel):
     name: str
     password: str
     email: EmailStr
-    user_role: RoleEnum 
+    user_role: RoleEnum
     business_key: str
     store_id: str
 
@@ -26,14 +27,15 @@ class UserResponse(BaseModel):
     user_status: StatusEnum
 
     class Config:
-        from_attributes = True  
+        from_attributes = True
 
 
 class StaffResponse(BaseModel):
-    name:str
-    email_id:str
-    affilated_user_id:str
+    name: str
+    email_id: str
+    affilated_user_id: str
+
 
 class StaffCreate(BaseModel):
-    name:str
-    email_id:str
+    name: str
+    email_id: str
