@@ -20,7 +20,8 @@ class StoreResponse(StoreCreate):
     modified_at: datetime
 
     class Config:
-        from_attributes = True  
+        from_attributes = True
+
 
 class StoreSummary(BaseModel):
     store_id: str

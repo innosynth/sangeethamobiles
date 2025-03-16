@@ -7,6 +7,8 @@ from datetime import datetime
 
 
 class RecordingResponse(BaseModel):
+    user_id: str
+
     user_id:str
     
 class GetRecording(BaseModel):

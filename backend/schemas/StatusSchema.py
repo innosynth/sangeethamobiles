@@ -1,5 +1,6 @@
 import enum
 
+
 class StatusEnum(enum.IntEnum):
     ACTIVE = 1
     INACTIVE = 0
