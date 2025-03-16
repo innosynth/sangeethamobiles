@@ -32,7 +32,6 @@ def upload_recording(
         Recording, staff_id, start_time, end_time, CallDuration, db, token
     )
 
-
     return {
         "Status": 1,
         "Msg": "Created Successfully",
@@ -40,10 +39,9 @@ def upload_recording(
     }
 
 
-@router.get("/get-recordings", response_model = list[GetRecording])
+@router.get("/get-recordings", response_model=list[GetRecording])
 def get_recording(
-    db: Session = Depends(get_session),
-    token: dict = Depends(verify_token)
+    db: Session = Depends(get_session), token: dict = Depends(verify_token)
 ):
     try:
         user_id = token.get("user_id")
@@ -70,6 +68,44 @@ def get_recording(
             )
             for rec in recordings
         ]
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recordings: {e}")
+
+
+@router.get("/get-latest-recording", response_model=GetRecording)
+def get_latest_recording(
+    db: Session = Depends(get_session), token: dict = Depends(verify_token)
+):
+    try:
+        user_id = token.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        # Fetch the latest recording for the authenticated user
+        latest_recording = (
+            db.query(VoiceRecording)
+            .filter(VoiceRecording.user_id == user_id)
+            .order_by(VoiceRecording.created_at.desc())  # Sort by latest
+            .first()
+        )
+
+        if not latest_recording:
+            raise HTTPException(status_code=404, detail="No recordings found")
+
+        # Convert to response format
+        return GetRecording(
+            staff_id=latest_recording.staff_id,
+            start_time=latest_recording.start_time,
+            end_time=latest_recording.end_time,
+            call_duration=latest_recording.call_duration,
+            audio_length=latest_recording.audio_length,
+            file_url=latest_recording.file_url,
+            created_at=latest_recording.created_at,
+            modified_at=latest_recording.modified_at,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching latest recording: {e}"
+        )

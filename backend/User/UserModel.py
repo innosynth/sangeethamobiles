@@ -21,6 +21,7 @@ class User(Base):
     business_key = Column(String(255), nullable=False)
     store_id = Column(String(36), nullable=False)
     created_at = Column(DateTime, default=func.current_timestamp(), nullable=False)
+    last_login = Column(DateTime, default=func.current_timestamp(), nullable=True)
     modified_at = Column(
         DateTime,
         default=func.current_timestamp(),
