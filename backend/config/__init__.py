@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Optional, List
 from pydantic import Field
 from pydantic_settings import BaseSettings
-# import pytz 
+
+# import pytz
 
 
 def get_env_file():
@@ -23,10 +24,9 @@ class TenantSettings(BaseSettings):
     S3_CDN: str
     VERIFY_TOKEN: str
     DEBUG: bool
-    tz_NY:str
-    BASE_UPLOAD_FOLDER:str    
+    tz_NY: str
+    BASE_UPLOAD_FOLDER: str
 
     class Config:
         env_file = get_env_file()
         env_file_encoding = "utf-8"
-        
