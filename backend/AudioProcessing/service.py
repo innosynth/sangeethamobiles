@@ -3,8 +3,9 @@ from botocore.client import Config
 from backend.config import TenantSettings
 from backend.AudioProcessing.utils import file_storage
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
-import datetime
+from datetime import datetime
 import json
+import os
 
 settings = TenantSettings()
 
@@ -58,4 +59,6 @@ def upload_recording(
     # Add to the session and commit the transaction
     db.add(new_call_recording)
     db.commit()
-    return new_call_recording
+
+    return affilated_user_id
+

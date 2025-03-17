@@ -11,8 +11,9 @@ from backend.AudioProcessing.schema import RecordingResponse, GetRecording
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from backend.auth.jwt_handler import verify_token
 from backend.config import TenantSettings
-from backend.AudioProcessing.service import upload_recording
 from backend.schemas.RoleSchema import RoleEnum
+
+from backend.AudioProcessing.service import upload_recording as upload_recording_service
 
 router = APIRouter()
 settings = TenantSettings()
@@ -28,21 +29,22 @@ def upload_recording(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-    CallRecoding = upload_recording(
-        Recording, staff_id, start_time, end_time, CallDuration, db, token
-    )
 
-    return {
-        "Status": 1,
-        "Msg": "Created Successfully",
-        "CallRecordingKey": CallRecoding,
-    }
+    CallRecoding = upload_recording_service(Recording, staff_id, start_time, end_time, CallDuration, db, token)
+
+    user_id = token.get("user_id")
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID missing from token")
+
+    return RecordingResponse(user_id=user_id)
 
 
 @router.get("/get-recordings", response_model=list[GetRecording])
 def get_recording(
     db: Session = Depends(get_session), token: dict = Depends(verify_token)
 ):
+
     try:
         user_id = token.get("user_id")
         role_str = token.get("role")
@@ -87,3 +89,4 @@ def get_recording(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recordings: {e}")
+

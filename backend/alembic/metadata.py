@@ -5,7 +5,7 @@ from backend.AudioProcessing.VoiceRecordingModel import Base as VoiceRecordingBa
 from backend.models.TranscriptionModel import Base as TranscriptionBase
 from backend.Store.StoreModel import Base as StoreBase
 from backend.Business.BusinessModel import Base as BussinessBase
-
+from backend.Feedback.FeedbackModel import Base as FeedbackBase
 
 target_metadata = [
     BussinessBase.metadata,
@@ -15,4 +15,5 @@ target_metadata = [
     TranscriptionBase.metadata,
     AnalyticsBase.metadata,
     VoiceRecordingBase.metadata,
+    FeedbackBase.metadata,
 ]
