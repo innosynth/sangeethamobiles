@@ -10,7 +10,6 @@ def generate_uuid():
     return str(uuid.uuid4())
 
 
-
 class VoiceRecording(Base):
     __tablename__ = "voice_recording"
 

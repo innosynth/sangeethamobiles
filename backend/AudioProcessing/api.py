@@ -30,7 +30,9 @@ def upload_recording(
     token: dict = Depends(verify_token),
 ):
 
-    CallRecoding = upload_recording_service(Recording, staff_id, start_time, end_time, CallDuration, db, token)
+    CallRecoding = upload_recording_service(
+        Recording, staff_id, start_time, end_time, CallDuration, db, token
+    )
 
     user_id = token.get("user_id")
 
@@ -48,14 +50,12 @@ def get_recording(
     try:
         user_id = token.get("user_id")
         role_str = token.get("role")
-        print(user_id, role_str)
         if not user_id:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         try:
             # role_int = int(role_str.lstrip("L"))
             user_role = RoleEnum(role_str)
-            print(user_role)
         except ValueError:
             raise HTTPException(
                 status_code=403, detail="Invalid user role provided in token."
@@ -91,4 +91,3 @@ def get_recording(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recordings: {e}")
-

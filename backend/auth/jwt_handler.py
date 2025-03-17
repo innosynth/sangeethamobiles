@@ -27,7 +27,6 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print(payload)
         return payload
     except JWTError:
         raise HTTPException(
