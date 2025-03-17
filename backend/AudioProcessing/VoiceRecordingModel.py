@@ -7,7 +7,7 @@ Base = declarative_base()
 
 
 def generate_uuid():
-    return str(uuid.uuid4())  # Replace this with cuid.cuid() if using CUIDs
+    return str(uuid.uuid4())
 
 
 class VoiceRecording(Base):
