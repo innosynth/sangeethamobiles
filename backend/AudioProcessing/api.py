@@ -48,12 +48,14 @@ def get_recording(
     try:
         user_id = token.get("user_id")
         role_str = token.get("role")
-        if not user_id or not role_str:
+        print(user_id, role_str)
+        if not user_id:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         try:
-            role_int = int(role_str.lstrip("L"))
-            user_role = RoleEnum(role_int)
+            # role_int = int(role_str.lstrip("L"))
+            user_role = RoleEnum(role_str)
+            print(user_role)
         except ValueError:
             raise HTTPException(
                 status_code=403, detail="Invalid user role provided in token."
