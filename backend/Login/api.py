@@ -26,12 +26,10 @@ def login_user(user_data: LoginSchema, db: Session = Depends(get_session)):
     if not verify_password(user_data.password, user.password):
         raise HTTPException(status_code=400, detail="Invalid password")
 
-
     access_token = create_access_token(
         data={"sub": user.email, "role": user.user_role, "user_id": user.id},
         expires_delta=timedelta(minutes=30),
     )
-
 
     user.last_login = datetime.utcnow()
     db.commit()

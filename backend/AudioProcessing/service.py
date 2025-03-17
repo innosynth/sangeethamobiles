@@ -61,4 +61,3 @@ def upload_recording(
     db.commit()
 
     return affilated_user_id
-
