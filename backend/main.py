@@ -10,6 +10,7 @@ from backend.User.api import router as user_router
 from backend.AudioProcessing.api import router as audio_router
 from backend.Feedback.api import router as feedback_router
 
+
 load_dotenv()
 app = FastAPI(
     openapi_url="/api/v1/openapi.json",
@@ -24,6 +25,7 @@ app.include_router(login_router)
 app.include_router(user_router)
 app.include_router(audio_router)
 app.include_router(feedback_router)
+
 
 
 # Simple route for basic testing and healthcheck

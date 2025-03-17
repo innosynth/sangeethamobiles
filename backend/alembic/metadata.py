@@ -7,7 +7,6 @@ from backend.Store.StoreModel import Base as StoreBase
 from backend.Business.BusinessModel import Base as BussinessBase
 from backend.Feedback.FeedbackModel import Base as FeedbackBase
 
-
 target_metadata = [
     BussinessBase.metadata,
     UserBase.metadata,
