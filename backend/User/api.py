@@ -3,7 +3,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from backend.User.UserModel import User, Staff
-from backend.User.UserSchema import UserCreate, UserResponse, StaffResponse, StaffCreate
+from backend.User.UserSchema import (
+    UserCreate,
+    UserResponse,
+    StaffResponse,
+    StaffCreate,
+    CreateUserResponse,
+)
+from backend.Store.StoreModel import Store
+from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
+from sqlalchemy import func
 from backend.db.db import get_session
 import uuid
 from backend.auth.jwt_handler import verify_token
@@ -25,7 +34,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-@router.post("/create-user", response_model=UserResponse)
+@router.post("/create-user", response_model=CreateUserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_session)):
 
     existing_user = db.query(User).filter(User.email == user.email).first()
@@ -53,7 +62,38 @@ def create_user(user: UserCreate, db: Session = Depends(get_session)):
 @router.get("/get-all-users", response_model=list[UserResponse])
 def read_users(db: Session = Depends(get_session)):
     users = db.query(User).all()
-    return users
+    user_data = []
+    for user in users:
+        store = db.query(Store).filter(Store.store_id == user.store_id).first()
+        store_name = store.store_name if store else "Unknown"
+        print(store_name)
+        total_duration = (
+            db.query(func.sum(VoiceRecording.call_duration))
+            .filter(VoiceRecording.user_id == user.id)
+            .scalar()
+            or 0
+        )
+        recording_hours = round(total_duration / 3600, 2)
+        print("hello")
+        user_data.append(
+            UserResponse(
+                id=user.id,
+                name=user.name,
+                email=user.email,
+                user_role=user.user_role,
+                business_key=user.business_key,
+                store_id=user.store_id,
+                store_name=store_name,
+                last_login=user.last_login,
+                user_status=user.user_status,
+                created_at=user.created_at,
+                modified_at=user.modified_at,
+                recording_hours=recording_hours,
+            )
+        )
+
+        print(users[0].__dict__)
+    return user_data
 
 
 @router.post("/add-staff", response_model=StaffResponse)

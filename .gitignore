@@ -1,6 +1,6 @@
 .env
 .venv/
-uploads/
+upload_files/
 .idea
 .ipynb_checkpoints
 .mypy_cache
