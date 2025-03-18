@@ -2,7 +2,7 @@ import enum
 
 
 class RoleEnum(enum.IntEnum):
-    L3 = 3
-    L2 = 2
-    L1 = 1
-    L0 = 0
+    L3 = 3  # business head
+    L2 = 2  # regional head
+    L1 = 1  # area head
+    L0 = 0  # user
