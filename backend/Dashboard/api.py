@@ -6,7 +6,9 @@ from backend.schemas.RoleSchema import RoleEnum
 from backend.auth.jwt_handler import verify_token
 from backend.Dashboard.schemas import *
 from backend.User.UserModel import User
+
 router = APIRouter()
+
 
 @router.get("/last-login", response_model=LastLogin)
 async def get_last_login(
@@ -29,14 +31,14 @@ async def get_last_login(
         if user_role != RoleEnum.L3:
             raise HTTPException(status_code=403, detail="Permission denied")
     else:
-        user_id = token_user_id 
+        user_id = token_user_id
 
     user = db.query(User).filter(User.id == user_id).first()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return LastLogin(user_id = user_id, last_login=user.last_login)
+    return LastLogin(user_id=user_id, last_login=user.last_login)
 
 
 # ## available staff based on user_id
