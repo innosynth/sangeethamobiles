@@ -12,8 +12,8 @@ def check_role(allowed_roles: list[RoleEnum]):
             role_str = token_data.get("role")  # e.g., "L0"
             try:
                 # Remove the "L" prefix and convert to int, then create the RoleEnum
-                role_int = int(role_str.lstrip("L"))
-                user_role = RoleEnum(role_int)
+                # role_int = int(role_str.lstrip("L"))
+                user_role = RoleEnum(role_str)
             except (ValueError, KeyError):
                 raise HTTPException(
                     status_code=403, detail="Invalid user role provided in token."
