@@ -11,3 +11,7 @@ passlib
 pydantic[email]
 bcrypt
 python-jose
+uvicorn
+pydantic_settings
+boto3
+python-multipart
