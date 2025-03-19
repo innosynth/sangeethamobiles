@@ -15,7 +15,6 @@ class Area(Base):
 
     area_id = Column(String(36), primary_key=True, default=generate_uuid)
     area_name = Column(String(255), nullable=False)
-    area_manager_name = Column(String(255), nullable=False)
     sales_id = Column(String(36), nullable=False)  # Foreign key linking to Sales table
     created_at = Column(DateTime, default=func.current_timestamp())
     modified_at = Column(
