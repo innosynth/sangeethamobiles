@@ -36,8 +36,8 @@ def create_feedback(
         raise HTTPException(status_code=404, detail="Voice recording record not found")
     feedback = FeedbackModel(
         id=str(uuid.uuid4()),
-        audio_id=voice_recording.user_id,
-        created_by=voice_recording.staff_id,
+        audio_id=feedback_data.audio_id,
+        created_by=feedback_data.staff_id,
         feedback=json.dumps(feedback_data.feedback),
         Billed=feedback_data.Billed,
         number=feedback_data.number,

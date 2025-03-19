@@ -30,16 +30,22 @@ def upload_recording(
     token: dict = Depends(verify_token),
 ):
 
+    user_id = token.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID missing from token")
     CallRecoding = upload_recording_service(
         Recording, staff_id, start_time, end_time, CallDuration, db, token
     )
-
-    user_id = token.get("user_id")
-
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID missing from token")
-
-    return RecordingResponse(user_id=user_id)
+    print(CallRecoding.__dict__)
+    return RecordingResponse(
+        id=CallRecoding.id,
+        staff_id=CallRecoding.staff_id,
+        start_time=CallRecoding.start_time,
+        end_time=CallRecoding.end_time,
+        call_duration=CallRecoding.call_duration,
+        audio_length=CallRecoding.audio_length,
+        file_url=CallRecoding.file_url,
+    )
 
 
 @router.get("/get-recordings", response_model=list[GetRecording])

@@ -15,7 +15,7 @@ class UserCreate(BaseModel):
     store_id: str
 
 
-class UserResponse(BaseModel):
+class CreateUserResponse(BaseModel):
     id: str
     name: str
     email: EmailStr
@@ -25,6 +25,24 @@ class UserResponse(BaseModel):
     created_at: datetime
     modified_at: datetime
     user_status: StatusEnum
+    recording_hours: float
+
+    class Config:
+        from_attributes = True
+
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: EmailStr
+    user_role: RoleEnum
+    business_key: str
+    store_id: str
+    store_name: str
+    created_at: datetime
+    modified_at: datetime
+    user_status: StatusEnum
+    recording_hours: float
 
     class Config:
         from_attributes = True

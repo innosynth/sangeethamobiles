@@ -43,11 +43,15 @@ async def read_stores(
     ),  # This dependency validates the token and provides its payload
 ):
     stores = db.query(
-        Store.store_id, Store.store_name, Store.district, Store.state
+        Store.store_id, Store.store_name, Store.store_code, Store.district, Store.state
     ).all()
     return [
         StoreSummary(
-            store_id=store[0], store_name=store[1], district=store[2], state=store[3]
+            store_id=store[0],
+            store_name=store[1],
+            store_code=store[2],
+            district=store[3],
+            state=store[4],
         )
         for store in stores
     ]

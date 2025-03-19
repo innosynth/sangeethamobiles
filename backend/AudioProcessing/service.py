@@ -59,5 +59,5 @@ def upload_recording(
     # Add to the session and commit the transaction
     db.add(new_call_recording)
     db.commit()
-
-    return affilated_user_id
+    print(VoiceRecording)
+    return new_call_recording

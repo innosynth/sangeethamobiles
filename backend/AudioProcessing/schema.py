@@ -7,7 +7,13 @@ from datetime import datetime
 
 
 class RecordingResponse(BaseModel):
-    user_id: str
+    id: str
+    staff_id: str
+    start_time: datetime
+    end_time: datetime
+    call_duration: float
+    audio_length: float
+    file_url: str
 
 
 class GetRecording(BaseModel):
