@@ -70,7 +70,7 @@ def get_recording(
             recordings = (
                 db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id).all()
             )
-        elif user_role == RoleEnum.L3:
+        elif user_role == RoleEnum.L4:
             recordings = db.query(VoiceRecording).filter().all()
         else:
             raise HTTPException(
@@ -151,6 +151,7 @@ def get_last_recording(
             status_code=500, detail=f"Error fetching last recording: {e}"
         )
 
+
 @router.get("/get-daily-recording-hours", response_model=dict)
 def get_daily_recording_hours(
     time_period: str = Query(
@@ -228,6 +229,7 @@ def get_daily_recording_hours(
             status_code=500, detail=f"Error fetching daily recording hours: {e}"
         )
 
+
 @router.get("/recordings-insights", response_model=dict)
 def get_recordings_insights(
     user_id: str = Query(None, description="User ID to fetch insights for"),
@@ -279,14 +281,16 @@ def get_recordings_insights(
         hourly_counts = (
             db.query(
                 func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
-                func.count().label("call_count")
+                func.count().label("call_count"),
             )
             .group_by(func.extract("hour", VoiceRecording.start_time))
             .order_by(func.count().desc())
             .all()
         )
 
-        peak_hours = {int(record.hour_of_day): record.call_count for record in hourly_counts}
+        peak_hours = {
+            int(record.hour_of_day): record.call_count for record in hourly_counts
+        }
 
         return {
             "total_recording_hours": round(total_hours, 2),

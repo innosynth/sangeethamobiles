@@ -45,9 +45,9 @@ def create_feedback(
     db.add(feedback)
     db.commit()
     db.refresh(feedback)
-    
+
     return FeedbackResponse(
-        id = feedback.id,
+        id=feedback.id,
         user_id=user_id,
         staff_id=feedback.created_by,
         created_at=feedback.created_at,
