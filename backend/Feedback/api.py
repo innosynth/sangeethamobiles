@@ -153,19 +153,19 @@ def get_feedback_rating(
         
 
     
-    if positive_feedbacks > negative_feedbacks and positive_feedbacks > average_feedbacks:
-        overall_rating = "Good"
-    elif negative_feedbacks > positive_feedbacks and negative_feedbacks > average_feedbacks:
-        overall_rating = "Bad"
-    elif average_feedbacks > positive_feedbacks and average_feedbacks > negative_feedbacks:
-        overall_rating = "Average"
-    else:# If there is a tie, prioritize positive > average > negative
-        if positive_feedbacks == max(positive_feedbacks, negative_feedbacks, average_feedbacks):
-            overall_rating = "Good"
-        elif average_feedbacks == max(positive_feedbacks, negative_feedbacks, average_feedbacks):
-            overall_rating = "Average"
-        else:
-            overall_rating = "Bad"
+    # if positive_feedbacks > negative_feedbacks and positive_feedbacks > average_feedbacks:
+    #     overall_rating = "Good"
+    # elif negative_feedbacks > positive_feedbacks and negative_feedbacks > average_feedbacks:
+    #     overall_rating = "Bad"
+    # elif average_feedbacks > positive_feedbacks and average_feedbacks > negative_feedbacks:
+    #     overall_rating = "Average"
+    # else:# If there is a tie, prioritize positive > average > negative
+    #     if positive_feedbacks == max(positive_feedbacks, negative_feedbacks, average_feedbacks):
+    #         overall_rating = "Good"
+    #     elif average_feedbacks == max(positive_feedbacks, negative_feedbacks, average_feedbacks):
+    #         overall_rating = "Average"
+    #     else:
+    #         overall_rating = "Bad"
 
     return {
         "user_id": user_id,
@@ -173,6 +173,5 @@ def get_feedback_rating(
         "positive_feedbacks": positive_feedbacks,
         "negative_feedbacks": negative_feedbacks,
         "average_feedbacks": average_feedbacks,
-        "overall_rating": overall_rating,
     }
 
