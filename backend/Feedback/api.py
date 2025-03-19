@@ -107,39 +107,48 @@ def get_feedback(
     )
 
 
-@router.get("/feedback/rating/{audio_id}")
+
+@router.get("/feedback-rating", response_model=dict)
 def get_feedback_rating(
-    audio_id: str, db: Session = Depends(get_session), token: dict = Depends(verify_token)
+    db: Session = Depends(get_session), token: dict = Depends(verify_token)
 ):
     user_id = token.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    feedbacks = db.query(FeedbackModel).filter(FeedbackModel.audio_id == audio_id).all()
+    
+    voice_recordings = db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id).all()
 
-    if not feedbacks:
-        raise HTTPException(status_code=404, detail="No feedback found for this audio")
+    if not voice_recordings:
+        raise HTTPException(status_code=404, detail="No voice recordings found")
+
+   
+    audio_ids = [record.id for record in voice_recordings]
+
+   
+    feedbacks = db.query(FeedbackModel).filter(FeedbackModel.audio_id.in_(audio_ids)).all()
 
     total_feedbacks = len(feedbacks)
     positive_feedbacks = 0
     negative_feedbacks = 0
 
-    positive_keywords = ["good", "excellent", "amazing", "great"]
-    negative_keywords = ["bad", "poor", "terrible", "worst"]
-
     for feedback in feedbacks:
+        # print("Raw Feedback from DB:", feedback.feedback)
         try:
-            feedback_data = json.loads(feedback.feedback)  # Ensure feedback is a dictionary
+            feedback_data = json.loads(feedback.feedback) 
+            print("Parsed Feedback:", feedback_data)  
         except json.JSONDecodeError:
-            continue  # Skip if feedback is not a valid JSON
+            print("JSON Decode Error! Skipping feedback.")
+            continue 
 
-        feedback_text = json.dumps(feedback_data).lower()  # Convert to lowercase
+        feedback_text = json.dumps(feedback_data).lower()  
 
-        if any(word in feedback_text for word in positive_keywords):
+        if "good" in feedback_text:
             positive_feedbacks += 1
-        elif any(word in feedback_text for word in negative_keywords):
+        elif "bad" in feedback_text:
             negative_feedbacks += 1
 
+    
     overall_rating = "Average"
     if positive_feedbacks > negative_feedbacks:
         overall_rating = "Good"
@@ -147,12 +156,10 @@ def get_feedback_rating(
         overall_rating = "Bad"
 
     return {
-        "audio_id": audio_id,
         "user_id": user_id,
         "total_feedbacks": total_feedbacks,
         "positive_feedbacks": positive_feedbacks,
         "negative_feedbacks": negative_feedbacks,
         "overall_rating": overall_rating,
     }
-
 
