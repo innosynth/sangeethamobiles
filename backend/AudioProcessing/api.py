@@ -429,3 +429,79 @@ def get_peak_recording_hours(
         raise HTTPException(
             status_code=500, detail=f"Error fetching peak recording hours: {e}"
         )
+
+@router.get("/recordings-insights", response_model=dict)
+def get_recordings_insights(
+    user_id: str = Query(None, description="User ID to fetch insights for"),
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        token_user_id = token.get("user_id")
+        role_str = token.get("role")
+
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        try:
+            user_role = RoleEnum(role_str)
+        except ValueError:
+            raise HTTPException(
+                status_code=403, detail="Invalid user role provided in token."
+            )
+
+        if user_id is None:
+            user_id = token_user_id
+
+        if user_role == RoleEnum.L0 and user_id != token_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have permission to access other users' recordings.",
+            )
+
+        total_seconds = (
+            db.query(func.sum(VoiceRecording.call_duration))
+            .filter(VoiceRecording.user_id == user_id)
+            .scalar()
+        ) or 0
+        total_hours = total_seconds / 3600
+
+        total_recordings = (
+            db.query(func.count(VoiceRecording.id))
+            .filter(VoiceRecording.user_id == user_id)
+            .scalar()
+        ) or 0
+
+        avg_length = (
+            db.query(func.avg(VoiceRecording.call_duration))
+            .filter(VoiceRecording.user_id == user_id)
+            .scalar()
+        )
+        avg_minutes = round(avg_length / 60, 2) if avg_length else 0
+
+        hourly_avg = (
+            db.query(
+                func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
+                func.avg(VoiceRecording.call_duration).label("avg_duration"),
+            )
+            .filter(VoiceRecording.user_id == user_id)
+            .group_by(func.extract("hour", VoiceRecording.start_time))
+            .order_by(func.avg(VoiceRecording.call_duration).desc())
+            .all()
+        )
+
+        peak_hours = {
+            int(record.hour_of_day): round(record.avg_duration / 60, 2)
+            for record in hourly_avg
+        }
+
+        return {
+            "total_recording_hours": round(total_hours, 2),
+            "total_recordings": total_recordings,
+            "average_recording_length": avg_minutes,
+            "peak_hours": peak_hours,
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching recordings insights: {e}"
+        )
