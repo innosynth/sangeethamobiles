@@ -1,5 +1,4 @@
 # from fastapi import APIRouter
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from backend.User.UserModel import User, Staff
@@ -11,6 +10,7 @@ from backend.User.UserSchema import (
     CreateUserResponse,
 )
 from backend.Store.StoreModel import Store
+from backend.Area.AreaModel import Area
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from sqlalchemy import func
 from backend.db.db import get_session
@@ -67,6 +67,10 @@ def read_users(db: Session = Depends(get_session)):
         store = db.query(Store).filter(Store.store_id == user.store_id).first()
         store_name = store.store_name if store else "Unknown"
         print(store_name)
+
+        area = db.query(Area).filter(Area.area_id == store.area_id).first() if store else None
+        area_manager_name = area.area_manager_name if area else "Unknown"
+
         total_duration = (
             db.query(func.sum(VoiceRecording.call_duration))
             .filter(VoiceRecording.user_id == user.id)
@@ -84,6 +88,7 @@ def read_users(db: Session = Depends(get_session)):
                 business_key=user.business_key,
                 store_id=user.store_id,
                 store_name=store_name,
+                area_manager_name=area_manager_name,
                 last_login=user.last_login,
                 user_status=user.user_status,
                 created_at=user.created_at,
