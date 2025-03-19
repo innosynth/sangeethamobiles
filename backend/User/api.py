@@ -69,7 +69,7 @@ def read_users(db: Session = Depends(get_session)):
         print(store_name)
 
         area = db.query(Area).filter(Area.area_id == store.area_id).first() if store else None
-        area_manager_name = area.area_manager_name if area else "Unknown"
+        area_name = area.area_name if area else "Unknown"
 
         total_duration = (
             db.query(func.sum(VoiceRecording.call_duration))
@@ -88,7 +88,7 @@ def read_users(db: Session = Depends(get_session)):
                 business_key=user.business_key,
                 store_id=user.store_id,
                 store_name=store_name,
-                area_manager_name=area_manager_name,
+                area_name=area_name,
                 last_login=user.last_login,
                 user_status=user.user_status,
                 created_at=user.created_at,
