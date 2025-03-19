@@ -106,3 +106,73 @@ def get_feedback(
         created_at=feedback.created_at,
         modified_at=feedback.modified_at,
     )
+
+
+
+@router.get("/feedback-rating", response_model=dict)
+def get_feedback_rating(
+    db: Session = Depends(get_session), token: dict = Depends(verify_token)
+):
+    user_id = token.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    
+    voice_recordings = db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id).all()
+
+    if not voice_recordings:
+        raise HTTPException(status_code=404, detail="No voice recordings found")
+
+   
+    audio_ids = [record.id for record in voice_recordings]
+
+   
+    feedbacks = db.query(FeedbackModel).filter(FeedbackModel.audio_id.in_(audio_ids)).all()
+
+    total_feedbacks = len(feedbacks)
+    positive_feedbacks = 0
+    negative_feedbacks = 0
+    average_feedbacks = 0
+
+    for feedback in feedbacks:
+        # print("Raw Feedback from DB:", feedback.feedback)
+        try:
+            feedback_data = json.loads(feedback.feedback) 
+            # print("Parsed Feedback:", feedback_data)  
+        except json.JSONDecodeError:
+            # print("JSON Decode Error! Skipping feedback.")
+            continue 
+
+        feedback_text = json.dumps(feedback_data).lower()  
+
+        if "good" in feedback_text:
+            positive_feedbacks += 1
+        elif "bad" in feedback_text:
+            negative_feedbacks += 1
+        elif "average" in feedback_text:
+            average_feedbacks += 1
+        
+
+    
+    # if positive_feedbacks > negative_feedbacks and positive_feedbacks > average_feedbacks:
+    #     overall_rating = "Good"
+    # elif negative_feedbacks > positive_feedbacks and negative_feedbacks > average_feedbacks:
+    #     overall_rating = "Bad"
+    # elif average_feedbacks > positive_feedbacks and average_feedbacks > negative_feedbacks:
+    #     overall_rating = "Average"
+    # else:# If there is a tie, prioritize positive > average > negative
+    #     if positive_feedbacks == max(positive_feedbacks, negative_feedbacks, average_feedbacks):
+    #         overall_rating = "Good"
+    #     elif average_feedbacks == max(positive_feedbacks, negative_feedbacks, average_feedbacks):
+    #         overall_rating = "Average"
+    #     else:
+    #         overall_rating = "Bad"
+
+    return {
+        "user_id": user_id,
+        "total_feedbacks": total_feedbacks,
+        "positive_feedbacks": positive_feedbacks,
+        "negative_feedbacks": negative_feedbacks,
+        "average_feedbacks": average_feedbacks,
+    }
+
