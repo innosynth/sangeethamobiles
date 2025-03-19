@@ -105,3 +105,54 @@ def get_feedback(
         created_at=feedback.created_at,
         modified_at=feedback.modified_at,
     )
+
+
+@router.get("/feedback/rating/{audio_id}")
+def get_feedback_rating(
+    audio_id: str, db: Session = Depends(get_session), token: dict = Depends(verify_token)
+):
+    user_id = token.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    feedbacks = db.query(FeedbackModel).filter(FeedbackModel.audio_id == audio_id).all()
+
+    if not feedbacks:
+        raise HTTPException(status_code=404, detail="No feedback found for this audio")
+
+    total_feedbacks = len(feedbacks)
+    positive_feedbacks = 0
+    negative_feedbacks = 0
+
+    positive_keywords = ["good", "excellent", "amazing", "great"]
+    negative_keywords = ["bad", "poor", "terrible", "worst"]
+
+    for feedback in feedbacks:
+        try:
+            feedback_data = json.loads(feedback.feedback)  # Ensure feedback is a dictionary
+        except json.JSONDecodeError:
+            continue  # Skip if feedback is not a valid JSON
+
+        feedback_text = json.dumps(feedback_data).lower()  # Convert to lowercase
+
+        if any(word in feedback_text for word in positive_keywords):
+            positive_feedbacks += 1
+        elif any(word in feedback_text for word in negative_keywords):
+            negative_feedbacks += 1
+
+    overall_rating = "Average"
+    if positive_feedbacks > negative_feedbacks:
+        overall_rating = "Good"
+    elif negative_feedbacks > positive_feedbacks:
+        overall_rating = "Bad"
+
+    return {
+        "audio_id": audio_id,
+        "user_id": user_id,
+        "total_feedbacks": total_feedbacks,
+        "positive_feedbacks": positive_feedbacks,
+        "negative_feedbacks": negative_feedbacks,
+        "overall_rating": overall_rating,
+    }
+
+

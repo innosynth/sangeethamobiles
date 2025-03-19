@@ -14,6 +14,6 @@ class FeedbackResponse(BaseModel):
     id: str
     user_id: str
     staff_id: str
-    feedback: str
+    # feedback: str
     created_at: datetime
     modified_at: datetime
