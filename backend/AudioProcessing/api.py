@@ -478,21 +478,17 @@ def get_recordings_insights(
         )
         avg_minutes = round(avg_length / 60, 2) if avg_length else 0
 
-        hourly_avg = (
+        hourly_counts = (
             db.query(
                 func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
-                func.avg(VoiceRecording.call_duration).label("avg_duration"),
+                func.count().label("call_count")
             )
-            .filter(VoiceRecording.user_id == user_id)
             .group_by(func.extract("hour", VoiceRecording.start_time))
-            .order_by(func.avg(VoiceRecording.call_duration).desc())
+            .order_by(func.count().desc())
             .all()
         )
 
-        peak_hours = {
-            int(record.hour_of_day): round(record.avg_duration / 60, 2)
-            for record in hourly_avg
-        }
+        peak_hours = {int(record.hour_of_day): record.call_count for record in hourly_counts}
 
         return {
             "total_recording_hours": round(total_hours, 2),
