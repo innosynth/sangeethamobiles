@@ -241,7 +241,7 @@ def get_recordings_insights(
         role_str = token.get("role")
 
         if not token_user_id:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+            raise HTTPException(status_code=401, detail="Unauthorized")        
         try:
             user_role = RoleEnum(role_str)
         except ValueError:
@@ -283,6 +283,7 @@ def get_recordings_insights(
                 func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
                 func.count().label("call_count"),
             )
+            .filter(VoiceRecording.user_id == user_id)
             .group_by(func.extract("hour", VoiceRecording.start_time))
             .order_by(func.count().desc())
             .all()
@@ -292,14 +293,64 @@ def get_recordings_insights(
             int(record.hour_of_day): record.call_count for record in hourly_counts
         }
 
+        total_listening_seconds = (
+            db.query(func.sum(VoiceRecording.listening_time))
+            .filter(VoiceRecording.user_id == user_id)
+            .scalar()
+        ) or 0
+        total_listening_hours = total_listening_seconds / 3600
+
+        last_listening = (
+            db.query(VoiceRecording.last_listening_time)
+            .filter(VoiceRecording.user_id == user_id)
+            .order_by(VoiceRecording.last_listening_time.desc())
+            .first()
+        )
+        last_listening_time = last_listening[0] if last_listening else None
+
         return {
+            "user_id": user_id,
             "total_recording_hours": round(total_hours, 2),
             "total_recordings": total_recordings,
             "average_recording_length": avg_minutes,
             "peak_hours": peak_hours,
+            "total_listening_hours": round(total_listening_hours, 2),
+            "last_listening_time": last_listening_time,
         }
 
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching recordings insights: {e}"
         )
+
+@router.put("/update-listening-time", response_model=dict)
+def update_listening_time(
+    recording_id: str = Form(..., description="ID of the recording"),
+    listening_time: float = Form(..., description="Time in seconds user listened to the recording"),
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        token_user_id = token.get("user_id")
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        recording = db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
+        if not recording:
+            raise HTTPException(status_code=404, detail="Recording not found")
+
+        recording.listening_time = listening_time
+        recording.last_listening_time = datetime.utcnow()
+        db.commit()
+        db.refresh(recording)
+
+        return {
+            "message": "Listening time updated successfully",
+            "recording_id": recording_id,
+            "updated_listening_time": recording.listening_time,
+            "last_listening_time": recording.last_listening_time
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating listening time: {e}")
