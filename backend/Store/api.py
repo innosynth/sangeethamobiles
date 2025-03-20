@@ -43,28 +43,28 @@ async def read_stores(
     ),  # This dependency validates the token and provides its payload
 ):
     stores = db.query(
-        Store.store_id, Store.store_name, Store.store_code, Store.district, Store.state
+        Store
     ).all()
     return [
         StoreSummary(
-            store_id=store[0],
-            store_name=store[1],
-            store_code=store[2],
-            district=store[3],
-            state=store[4],
+            store_id=store.store_id,
+            store_name=store.store_name,
+            store_code=store.store_code,
+            district=store.district,
+            state=store.state,
         )
         for store in stores
     ]
 
 
-@router.get("/store-details/{store_id}", response_model=StoreResponse)
-@check_role([RoleEnum.L0, RoleEnum.L1, RoleEnum.L2, RoleEnum.L3])
-async def read_store(
-    store_id: str,
-    db: Session = Depends(get_session),
-    token: dict = Depends(verify_token),
-):
-    store = db.query(Store).filter(Store.store_id == store_id).first()
-    if store is None:
-        raise HTTPException(status_code=404, detail="Store not found")
-    return store
+# @router.get("/store-details/{store_id}", response_model=StoreResponse)
+# @check_role([RoleEnum.L0, RoleEnum.L1, RoleEnum.L2, RoleEnum.L3])
+# async def read_store(
+#     store_id: str,
+#     db: Session = Depends(get_session),
+#     token: dict = Depends(verify_token),
+# ):
+#     store = db.query(Store).filter(Store.store_id == store_id).first()
+#     if store is None:
+#         raise HTTPException(status_code=404, detail="Store not found")
+#     return store

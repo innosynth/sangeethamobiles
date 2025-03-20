@@ -12,7 +12,9 @@ from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from backend.auth.jwt_handler import verify_token
 from backend.config import TenantSettings
 from backend.schemas.RoleSchema import RoleEnum
-
+from backend.Store.StoreModel import Store
+from backend.Area.AreaModel import Area
+from backend.User.UserModel import User
 from backend.AudioProcessing.service import upload_recording as upload_recording_service
 
 router = APIRouter()
@@ -36,7 +38,6 @@ def upload_recording(
     CallRecoding = upload_recording_service(
         Recording, staff_id, start_time, end_time, CallDuration, db, token
     )
-    print(CallRecoding.__dict__)
     return RecordingResponse(
         id=CallRecoding.id,
         staff_id=CallRecoding.staff_id,
@@ -46,13 +47,10 @@ def upload_recording(
         audio_length=CallRecoding.audio_length,
         file_url=CallRecoding.file_url,
     )
-
-
 @router.get("/get-recordings", response_model=list[GetRecording])
 def get_recording(
     db: Session = Depends(get_session), token: dict = Depends(verify_token)
 ):
-
     try:
         user_id = token.get("user_id")
         role_str = token.get("role")
@@ -60,44 +58,56 @@ def get_recording(
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         try:
-            # role_int = int(role_str.lstrip("L"))
             user_role = RoleEnum(role_str)
         except ValueError:
             raise HTTPException(
                 status_code=403, detail="Invalid user role provided in token."
             )
-        if user_role == RoleEnum.L0:
-            recordings = (
-                db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id).all()
+
+        query = (
+            db.query(
+                VoiceRecording,
+                Store.store_name,
+                Area.area_name
             )
-        elif user_role == RoleEnum.L4:
-            recordings = db.query(VoiceRecording).filter().all()
+            .join(User, VoiceRecording.user_id == User.id)
+            .join(Store, User.store_id == Store.store_id)
+            .join(Area, Store.area_id == Area.area_id)
+        )
+        if user_role == RoleEnum.L0:
+            query = query.filter(VoiceRecording.user_id == user_id)
+        elif user_role == RoleEnum.L3:
+            pass  # Fetch all records
         else:
             raise HTTPException(
                 status_code=403,
                 detail="You don't have permission to access this resource.",
             )
 
+        recordings = query.all()
+
         if not recordings:
             raise HTTPException(status_code=404, detail="No recordings found")
-
+            
         return [
             GetRecording(
-                staff_id=rec.staff_id,
-                start_time=rec.start_time,
-                end_time=rec.end_time,
-                call_duration=rec.call_duration,
-                audio_length=rec.audio_length,
-                file_url=rec.file_url,
-                created_at=rec.created_at,
-                modified_at=rec.modified_at,
+                staff_id=rec.VoiceRecording.user_id,
+                start_time=rec.VoiceRecording.start_time,
+                end_time=rec.VoiceRecording.end_time,
+                call_duration=rec.VoiceRecording.call_duration,
+                audio_length=rec.VoiceRecording.audio_length,
+                listening_time=rec.VoiceRecording.listening_time or 0.0, 
+                file_url=rec.VoiceRecording.file_url,
+                store_name=rec.store_name,
+                area_name=rec.area_name,
+                created_at=rec.VoiceRecording.created_at,
+                modified_at=rec.VoiceRecording.modified_at,
             )
             for rec in recordings
         ]
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recordings: {e}")
-
 
 @router.get("/get-last-recording", response_model=GetRecording)
 def get_last_recording(
@@ -184,23 +194,21 @@ def get_daily_recording_hours(
                 detail="You don't have permission to access other users' recordings.",
             )
 
-        # Get date filters
         today = datetime.utcnow()
         if time_period == "week":
             start_date = today - timedelta(
                 days=today.weekday()
-            )  # Start of the week (Monday)
+            )
         elif time_period == "month":
-            start_date = today.replace(day=1)  # First day of the month
+            start_date = today.replace(day=1)
         elif time_period == "year":
-            start_date = today.replace(month=1, day=1)  # First day of the year
+            start_date = today.replace(month=1, day=1)
         else:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid time period. Use 'week', 'month', or 'year'.",
             )
 
-        # Query to get total hours recorded per day
         daily_hours = (
             db.query(
                 cast(VoiceRecording.start_time, Date).label("recording_date"),

@@ -26,6 +26,7 @@ class StoreResponse(StoreCreate):
 class StoreSummary(BaseModel):
     store_id: str
     store_name: str
+    store_code:str
     district: str
     state: str
 
