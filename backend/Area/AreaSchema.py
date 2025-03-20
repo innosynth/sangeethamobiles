@@ -2,7 +2,6 @@ from pydantic import BaseModel
 
 class AreaCreate(BaseModel):
     area_name: str
-    area_manager_name: str
     sales_id: str  # UUID as a string
 
 class AreaResponse(AreaCreate):
@@ -11,5 +10,4 @@ class AreaResponse(AreaCreate):
 class AreaSummary(BaseModel):
     area_id: str
     area_name: str
-    area_manager_name: str
     sales_id: str

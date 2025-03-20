@@ -19,7 +19,6 @@ async def create_area(
 ):
     db_area = Area(
         area_name=area.area_name,
-        area_manager_name=area.area_manager_name,
         sales_id=area.sales_id,
     )
     db.add(db_area)
@@ -35,15 +34,14 @@ async def get_all_areas(
     token: dict = Depends(verify_token),
 ):
     areas = db.query(
-        Area.area_id, Area.area_name, Area.area_manager_name, Area.sales_id
+        Area.area_id, Area.area_name, Area.sales_id
     ).all()
     
     return [
         AreaSummary(
             area_id=area[0],
             area_name=area[1],
-            area_manager_name=area[2],
-            sales_id=area[3],
+            sales_id=area[2],
         )
         for area in areas
     ]
