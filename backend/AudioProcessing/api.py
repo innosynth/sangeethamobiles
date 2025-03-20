@@ -241,7 +241,7 @@ def get_recordings_insights(
         role_str = token.get("role")
 
         if not token_user_id:
-            raise HTTPException(status_code=401, detail="Unauthorized")        
+            raise HTTPException(status_code=401, detail="Unauthorized")
         try:
             user_role = RoleEnum(role_str)
         except ValueError:
@@ -323,10 +323,13 @@ def get_recordings_insights(
             status_code=500, detail=f"Error fetching recordings insights: {e}"
         )
 
+
 @router.put("/update-listening-time", response_model=dict)
 def update_listening_time(
     recording_id: str = Form(..., description="ID of the recording"),
-    listening_time: float = Form(..., description="Time in seconds user listened to the recording"),
+    listening_time: float = Form(
+        ..., description="Time in seconds user listened to the recording"
+    ),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -335,7 +338,9 @@ def update_listening_time(
         if not token_user_id:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
-        recording = db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
+        recording = (
+            db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
+        )
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
 
@@ -348,9 +353,11 @@ def update_listening_time(
             "message": "Listening time updated successfully",
             "recording_id": recording_id,
             "updated_listening_time": recording.listening_time,
-            "last_listening_time": recording.last_listening_time
+            "last_listening_time": recording.last_listening_time,
         }
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error updating listening time: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Error updating listening time: {e}"
+        )

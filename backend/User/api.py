@@ -63,22 +63,42 @@ def create_user(user: UserCreate, db: Session = Depends(get_session)):
 def read_users(db: Session = Depends(get_session)):
     users = db.query(User).all()
     user_data = []
+
     for user in users:
         store = db.query(Store).filter(Store.store_id == user.store_id).first()
         store_name = store.store_name if store else "Unknown"
-        print(store_name)
 
-        area = db.query(Area).filter(Area.area_id == store.area_id).first() if store else None
-        area_name = area.area_name if area else "Unknown"
+        # # Ensure area_name is always set
+        if store:
+            area = db.query(Area).filter(Area.area_id == store.area_id).first()
+            area_name = area.area_name if area else "Unknown"
+        else:
+            area_name = "Unknown"  # Set default value if store is None
 
+        # Calculate total recording duration
         total_duration = (
             db.query(func.sum(VoiceRecording.call_duration))
             .filter(VoiceRecording.user_id == user.id)
             .scalar()
             or 0
         )
+        total_listening_time = (
+            db.query(func.sum(VoiceRecording.listening_time))
+            .filter(VoiceRecording.user_id == user.id)
+            .scalar()
+            or 0
+        )
+        listening_hours = round(total_listening_time / 3600, 2)
         recording_hours = round(total_duration / 3600, 2)
-        print("hello")
+
+        # Count the number of recordings for this user
+        recording_count = (
+            db.query(func.count(VoiceRecording.id))
+            .filter(VoiceRecording.user_id == user.id)
+            .scalar()
+            or 0
+        )
+
         user_data.append(
             UserResponse(
                 id=user.id,
@@ -94,10 +114,11 @@ def read_users(db: Session = Depends(get_session)):
                 created_at=user.created_at,
                 modified_at=user.modified_at,
                 recording_hours=recording_hours,
+                recording_count=recording_count,
+                listening_hours=listening_hours,
             )
         )
 
-        print(users[0].__dict__)
     return user_data
 
 

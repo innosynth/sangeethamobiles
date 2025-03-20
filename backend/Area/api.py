@@ -10,6 +10,7 @@ from backend.auth.role_checker import check_role
 
 router = APIRouter()
 
+
 @router.post("/create-area", response_model=AreaResponse)
 @check_role([RoleEnum.L3])
 async def create_area(
@@ -33,10 +34,8 @@ async def get_all_areas(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-    areas = db.query(
-        Area.area_id, Area.area_name, Area.sales_id
-    ).all()
-    
+    areas = db.query(Area.area_id, Area.area_name, Area.sales_id).all()
+
     return [
         AreaSummary(
             area_id=area[0],
