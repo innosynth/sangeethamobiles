@@ -369,3 +369,36 @@ def update_listening_time(
         raise HTTPException(
             status_code=500, detail=f"Error updating listening time: {e}"
         )
+
+@router.delete("/delete-recording/{recording_id}", response_model=dict)
+def delete_recording(
+    recording_id: str,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        token_user_id = token.get("user_id")
+        role_str = token.get("role")
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        try:
+            user_role = RoleEnum(role_str)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Invalid user role.")
+
+        if user_role != RoleEnum.L3:
+            raise HTTPException(status_code=403, detail="Only admins can delete recordings.")
+
+        recording = db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
+
+        if not recording:
+            raise HTTPException(status_code=404, detail="Recording not found")
+
+        db.delete(recording)
+        db.commit()
+        return {"message": "Recording deleted successfully", "recording_id": recording_id}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting recording: {e}")

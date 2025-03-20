@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/create-store", response_model=StoreResponse)
-@check_role([RoleEnum.L4])
+@check_role([RoleEnum.L3])
 async def create_store(
     store: StoreCreate,
     db: Session = Depends(get_session),
@@ -68,3 +68,54 @@ async def read_stores(
 #     if store is None:
 #         raise HTTPException(status_code=404, detail="Store not found")
 #     return store
+
+@router.put("/edit-store/{store_id}", response_model=dict)
+@check_role([RoleEnum.L3])
+async def edit_store(
+    store_id: str,
+    store_update: StoreCreate,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        store = db.query(Store).filter(Store.store_id == store_id).first()
+        if not store:
+            raise HTTPException(status_code=404, detail="Store not found")
+
+        store.store_name = store_update.store_name
+        store.store_code = store_update.store_code
+        store.store_address = store_update.store_address
+        store.district = store_update.district
+        store.state = store_update.state
+        store.store_status = store_update.store_status
+        store.business_id = store_update.business_id
+        store.area_id = store_update.area_id
+
+        db.commit()
+        db.refresh(store)
+        return {"message": "Store updated successfully", "store_id": store.store_id}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating store: {str(e)}")
+
+
+@router.delete("/delete-store/{store_id}", response_model=dict)
+@check_role([RoleEnum.L3])
+async def delete_store(
+    store_id: str,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        store = db.query(Store).filter(Store.store_id == store_id).first()
+        if not store:
+            raise HTTPException(status_code=404, detail="Store not found")
+
+        db.delete(store)
+        db.commit()
+        return {"message": "Store deleted successfully", "store_id": store_id}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting store: {str(e)}")
