@@ -43,7 +43,10 @@ class UserResponse(BaseModel):
     modified_at: datetime
     user_status: StatusEnum
     recording_hours: float
+    listening_hours: float
     area_name: str
+    recording_count: int
+    store_name: str
 
     class Config:
         from_attributes = True

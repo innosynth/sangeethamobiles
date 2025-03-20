@@ -22,7 +22,9 @@ class VoiceRecording(Base):
     end_time = Column(DateTime, nullable=False)
     call_duration = Column(Float, nullable=False)
     listening_time = Column(Float, nullable=True)
-    last_listening_time = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    last_listening_time = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
     created_at = Column(DateTime, default=func.current_timestamp())
     modified_at = Column(
         DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
