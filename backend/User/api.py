@@ -11,6 +11,7 @@ from backend.User.UserSchema import (
 )
 from backend.Store.StoreModel import Store
 from backend.Area.AreaModel import Area
+from backend.schemas.RoleSchema import RoleEnum
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from sqlalchemy import func
 from backend.db.db import get_session
@@ -150,3 +151,78 @@ def add_staff(
         modified_at=new_staff.modified_at,
         staff_status=new_staff.staff_status,
     )
+
+@router.put("/edit-user/{user_id}", response_model=dict)
+def edit_user(
+    user_id: str,
+    user_update: UserCreate,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        token_user_id = token.get("user_id")
+        role_str = token.get("role")
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        try:
+            user_role = RoleEnum(role_str)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Invalid user role.")
+
+        if user_role != RoleEnum.L3:
+            raise HTTPException(status_code=403, detail="Only admins can edit users.")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user.name = user_update.name
+        user.email = user_update.email
+        user.user_role = user_update.user_role
+        user.business_key = user_update.business_key
+        user.store_id = user_update.store_id
+        db.commit()
+        db.refresh(user)
+        return {"message": "User updated successfully", "user_id": user.id}
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating user: {str(e)}")
+
+
+@router.delete("/delete-user/{user_id}", response_model=dict)
+def delete_user(
+    user_id: str,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        token_user_id = token.get("user_id")
+        role_str = token.get("role")
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        try:
+            user_role = RoleEnum(role_str)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Invalid user role.")
+
+        if user_role != RoleEnum.L3:
+            raise HTTPException(status_code=403, detail="Only admins can delete users.")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        db.delete(user)
+        db.commit()
+        return {"message": "User deleted successfully", "user_id": user_id}
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
