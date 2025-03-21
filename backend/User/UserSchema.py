@@ -25,7 +25,6 @@ class CreateUserResponse(BaseModel):
     created_at: datetime
     modified_at: datetime
     user_status: StatusEnum
-    recording_hours: float
 
     class Config:
         from_attributes = True

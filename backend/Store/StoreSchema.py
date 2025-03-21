@@ -12,6 +12,10 @@ class StoreCreate(BaseModel):
     store_status: StatusEnum
     business_id: str
     area_id: str
+    lat: str
+    long: str
+    pin_code: str
+    store_ph_no: str
 
 
 class StoreResponse(StoreCreate):

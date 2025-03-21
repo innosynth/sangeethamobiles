@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/create-area", response_model=AreaResponse)
-@check_role([RoleEnum.L3])
+@check_role([RoleEnum.L3,RoleEnum.L4])
 async def create_area(
     area: AreaCreate,
     db: Session = Depends(get_session),
@@ -21,6 +21,7 @@ async def create_area(
     db_area = Area(
         area_name=area.area_name,
         sales_id=area.sales_id,
+        area_manager_name=area.area_manager_name,
     )
     db.add(db_area)
     db.commit()
@@ -29,18 +30,19 @@ async def create_area(
 
 
 @router.get("/get-all-areas", response_model=list[AreaSummary])
-@check_role([RoleEnum.L3])
+@check_role([RoleEnum.L3,RoleEnum.L4])
 async def get_all_areas(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-    areas = db.query(Area.area_id, Area.area_name, Area.sales_id).all()
+    areas = db.query(Area.area_id, Area.area_name, Area.sales_id,Area.area_manager_name).all()
 
     return [
         AreaSummary(
             area_id=area[0],
             area_name=area[1],
             sales_id=area[2],
+            area_manager_name=area[3],
         )
         for area in areas
     ]

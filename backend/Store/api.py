@@ -27,6 +27,10 @@ async def create_store(
         store_status=store.store_status,
         business_id=store.business_id,
         area_id=store.area_id,
+        pin_code=store.pin_code,
+        store_ph_no=store.store_ph_no,
+        lat=store.lat,
+        long=store.long,
     )
     db.add(db_store)
     db.commit()
@@ -35,7 +39,7 @@ async def create_store(
 
 
 @router.get("/get-all-stores", response_model=list[StoreSummary])
-@check_role([RoleEnum.L0, RoleEnum.L1, RoleEnum.L2, RoleEnum.L3])
+@check_role([RoleEnum.L0, RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 async def read_stores(
     db: Session = Depends(get_session),
     token: dict = Depends(

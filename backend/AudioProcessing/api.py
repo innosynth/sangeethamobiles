@@ -76,7 +76,7 @@ def get_recording(
         )
         if user_role == RoleEnum.L0:
             query = query.filter(VoiceRecording.user_id == user_id)
-        elif user_role == RoleEnum.L3:
+        elif user_role == RoleEnum.L3 or user_role == RoleEnum.L4:
             pass  # Fetch all records
         else:
             raise HTTPException(
