@@ -76,7 +76,7 @@ def get_recording(
         )
         if user_role == RoleEnum.L0:
             query = query.filter(VoiceRecording.user_id == user_id)
-        elif user_role == RoleEnum.L3 or user_role == RoleEnum.L4:
+        elif user_role == RoleEnum.L4:
             pass  # Fetch all records
         else:
             raise HTTPException(
@@ -109,57 +109,72 @@ def get_recording(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recordings: {e}")
 
-# @router.get("/get-last-recording", response_model=GetRecording)
-# def get_last_recording(
-#     user_id: str = Query(None, description="User ID to fetch the last recording for"),
-#     db: Session = Depends(get_session),
-#     token: dict = Depends(verify_token),
-# ):
-#     try:
-#         token_user_id = token.get("user_id")
-#         role_str = token.get("role")
 
-#         if not token_user_id:
-#             raise HTTPException(status_code=401, detail="Unauthorized")
+@router.get("/get-last-recording", response_model=GetRecording)
+def get_last_recording(
+    user_id: str = Query(None, description="User ID to fetch the last recording for"),
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        token_user_id = token.get("user_id")
+        role_str = token.get("role")
 
-#         try:
-#             user_role = RoleEnum(role_str)
-#         except ValueError:
-#             raise HTTPException(
-#                 status_code=403, detail="Invalid user role provided in token."
-#             )
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
 
-#         if user_id is None:
-#             user_id = token_user_id
+        try:
+            user_role = RoleEnum(role_str)
+        except ValueError:
+            raise HTTPException(
+                status_code=403, detail="Invalid user role provided in token."
+            )
 
-#         if user_role == RoleEnum.L0 and user_id != token_user_id:
-#             raise HTTPException(
-#                 status_code=403,
-#                 detail="You don't have permission to access other users' recordings.",
-#             )
+        if user_id is None:
+            user_id = token_user_id
 
-#         query = db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id)
+        if user_role == RoleEnum.L0 and user_id != token_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have permission to access other users' recordings.",
+            )
 
-#         last_recording = query.order_by(VoiceRecording.created_at.desc()).first()
+        query = (
+            db.query(
+                VoiceRecording,
+                Store.store_name,
+                Area.area_name
+            )
+            .join(User, VoiceRecording.user_id == User.id)
+            .join(Store, User.store_id == Store.store_id)
+            .join(Area, Store.area_id == Area.area_id)
+            .filter(VoiceRecording.user_id == user_id)
+            .order_by(VoiceRecording.created_at.desc())
+        )
 
-#         if not last_recording:
-#             raise HTTPException(status_code=404, detail="No recordings found")
+        last_recording = query.first()
 
-#         return GetRecording(
-#             staff_id=last_recording.staff_id,
-#             start_time=last_recording.start_time,
-#             end_time=last_recording.end_time,
-#             call_duration=last_recording.call_duration,
-#             audio_length=last_recording.audio_length,
-#             file_url=last_recording.file_url,
-#             created_at=last_recording.created_at,
-#             modified_at=last_recording.modified_at,
-#         )
+        if not last_recording:
+            raise HTTPException(status_code=404, detail="No recordings found")
 
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=500, detail=f"Error fetching last recording: {e}"
-#         )
+        return GetRecording(
+            staff_id=last_recording.VoiceRecording.user_id,
+            start_time=last_recording.VoiceRecording.start_time,
+            end_time=last_recording.VoiceRecording.end_time,
+            call_duration=last_recording.VoiceRecording.call_duration,
+            audio_length=last_recording.VoiceRecording.audio_length,
+            listening_time=last_recording.VoiceRecording.listening_time or 0.0, 
+            file_url=last_recording.VoiceRecording.file_url,
+            store_name=last_recording.store_name,
+            area_name=last_recording.area_name,
+            created_at=last_recording.VoiceRecording.created_at,
+            modified_at=last_recording.VoiceRecording.modified_at,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching last recording: {e}"
+        )
 
 
 @router.get("/get-daily-recording-hours", response_model=dict)
