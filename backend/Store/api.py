@@ -74,7 +74,7 @@ async def read_stores(
 #     return store
 
 @router.put("/edit-store/{store_id}", response_model=dict)
-@check_role([RoleEnum.L3])
+@check_role([RoleEnum.L4])
 async def edit_store(
     store_id: str,
     store_update: StoreCreate,
@@ -105,7 +105,7 @@ async def edit_store(
 
 
 @router.delete("/delete-store/{store_id}", response_model=dict)
-@check_role([RoleEnum.L3])
+@check_role([RoleEnum.L4])
 async def delete_store(
     store_id: str,
     db: Session = Depends(get_session),

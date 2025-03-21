@@ -402,7 +402,7 @@ def delete_recording(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role.")
 
-        if user_role != RoleEnum.L3:
+        if user_role != RoleEnum.L4:
             raise HTTPException(status_code=403, detail="Only admins can delete recordings.")
 
         recording = db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()

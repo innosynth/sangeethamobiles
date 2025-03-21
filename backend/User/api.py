@@ -170,7 +170,7 @@ def edit_user(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role.")
 
-        if user_role != RoleEnum.L3:
+        if user_role != RoleEnum.L4:
             raise HTTPException(status_code=403, detail="Only admins can edit users.")
 
         user = db.query(User).filter(User.id == user_id).first()
@@ -210,7 +210,7 @@ def delete_user(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role.")
 
-        if user_role != RoleEnum.L3:
+        if user_role != RoleEnum.L4:
             raise HTTPException(status_code=403, detail="Only admins can delete users.")
 
         user = db.query(User).filter(User.id == user_id).first()
