@@ -25,6 +25,6 @@ class GetRecording(BaseModel):
     file_url: str
     created_at: datetime
     modified_at: datetime
-    # store_name:str
-    # area_name:str
-    # listening_time:float
+    store_name:str
+    area_name:str
+    listening_time:float
