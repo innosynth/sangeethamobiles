@@ -18,3 +18,7 @@ class FeedbackResponse(BaseModel):
     feedback: str
     created_at: datetime
     modified_at: datetime
+    staff_name: str
+    staff_email: str
+    number: Optional[str]
+    Billed: Optional[str]

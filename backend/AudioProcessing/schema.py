@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 # class UploadRecodingBody(BaseModel):
 #     file: bytes
@@ -22,9 +23,9 @@ class GetRecording(BaseModel):
     end_time: datetime
     call_duration: float
     audio_length: float
+    listening_time: float
     file_url: str
+    store_name: Optional[str] = None  # Allowing None if missing
+    area_name: Optional[str] = None   # Allowing None if missing
     created_at: datetime
     modified_at: datetime
-    store_name:str
-    area_name:str
-    listening_time:float

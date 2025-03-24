@@ -9,6 +9,7 @@ from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 import uuid
 import json
 from datetime import datetime
+from backend.User.UserModel import User
 
 router = APIRouter()
 
@@ -58,30 +59,41 @@ def create_feedback(
 
 @router.get("/list-feedbacks", response_model=List[FeedbackResponse])
 def get_all_feedbacks(
-    db: Session = Depends(get_session), token: dict = Depends(verify_token)
+    db: Session = Depends(get_session), 
+    token: dict = Depends(verify_token)
 ):
+    
     user_id = token.get("user_id")
+    print(user_id)
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    feedbacks = db.query(FeedbackModel).filter().all()
+    results = (
+        db.query(FeedbackModel, User)
+        .join(User, User.id == FeedbackModel.created_by)
+        .all()
+    )
+    print(results)
+    if not results:
+        raise HTTPException(status_code=404, detail="No feedback found")
 
-    if not feedbacks:
-        raise HTTPException(status_code=404, detail="No feedback found for this user")
-
-    feedback_list = [
-        FeedbackResponse(
-            id=feedback.id,
-            user_id=user_id,
-            staff_id=feedback.created_by,  # Assuming created_by stores staff_id
-            feedback=feedback.feedback,  # Ensure feedback is parsed
-            created_at=feedback.created_at,
-            modified_at=feedback.modified_at,
+    feedback_list = []
+    for feedback, staff in results:
+        feedback_list.append(
+            FeedbackResponse(
+                id=feedback.id,
+                user_id=user_id,
+                staff_id=staff.id,
+                staff_name=staff.name,
+                staff_email=staff.email,
+                feedback=feedback.feedback,
+                number=feedback.number,
+                Billed=feedback.Billed,
+                created_at=feedback.created_at,
+                modified_at=feedback.modified_at,
+            )
         )
-        for feedback in feedbacks
-    ]
     return feedback_list
-
 
 @router.get("/feedback/{feedback_id}", response_model=FeedbackResponse)
 def get_feedback(

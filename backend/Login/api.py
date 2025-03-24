@@ -28,7 +28,7 @@ def login_user(user_data: LoginSchema, db: Session = Depends(get_session)):
 
     access_token = create_access_token(
         data={"sub": user.email, "role": user.user_role, "user_id": user.id},
-        expires_delta=timedelta(minutes=30),
+        expires_delta=timedelta(minutes=480),
     )
 
     user.last_login = datetime.utcnow()

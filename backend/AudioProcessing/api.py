@@ -47,6 +47,7 @@ def upload_recording(
         audio_length=CallRecoding.audio_length,
         file_url=CallRecoding.file_url,
     )
+
 @router.get("/get-recordings", response_model=list[GetRecording])
 def get_recording(
     db: Session = Depends(get_session), token: dict = Depends(verify_token)
@@ -74,10 +75,13 @@ def get_recording(
             .join(Store, User.store_id == Store.store_id)
             .join(Area, Store.area_id == Area.area_id)
         )
+
         if user_role == RoleEnum.L0:
+            # L0 can only see their own recordings
             query = query.filter(VoiceRecording.user_id == user_id)
-        elif user_role == RoleEnum.L4:
-            pass  # Fetch all records
+        elif user_role in [RoleEnum.L1, RoleEnum.L4]:
+            # L1 and L4 see all recordings
+            pass
         else:
             raise HTTPException(
                 status_code=403,
@@ -88,7 +92,7 @@ def get_recording(
 
         if not recordings:
             raise HTTPException(status_code=404, detail="No recordings found")
-            
+
         return [
             GetRecording(
                 staff_id=rec.VoiceRecording.user_id,
@@ -96,7 +100,7 @@ def get_recording(
                 end_time=rec.VoiceRecording.end_time,
                 call_duration=rec.VoiceRecording.call_duration,
                 audio_length=rec.VoiceRecording.audio_length,
-                listening_time=rec.VoiceRecording.listening_time or 0.0, 
+                listening_time=rec.VoiceRecording.listening_time or 0.0,
                 file_url=rec.VoiceRecording.file_url,
                 store_name=rec.store_name,
                 area_name=rec.area_name,
@@ -146,8 +150,8 @@ def get_last_recording(
                 Area.area_name
             )
             .join(User, VoiceRecording.user_id == User.id)
-            .join(Store, User.store_id == Store.store_id)
-            .join(Area, Store.area_id == Area.area_id)
+            .outerjoin(Store, User.store_id == Store.store_id)
+            .outerjoin(Area, Store.area_id == Area.area_id)
             .filter(VoiceRecording.user_id == user_id)
             .order_by(VoiceRecording.created_at.desc())
         )
@@ -272,63 +276,97 @@ def get_recordings_insights(
                 status_code=403, detail="Invalid user role provided in token."
             )
 
+        # If no user_id is passed, default to the token’s user_id
         if user_id is None:
             user_id = token_user_id
 
+        # For L0, still enforce that they can only see their own data
         if user_role == RoleEnum.L0 and user_id != token_user_id:
             raise HTTPException(
                 status_code=403,
                 detail="You don't have permission to access other users' recordings.",
             )
 
-        total_seconds = (
-            db.query(func.sum(VoiceRecording.call_duration))
-            .filter(VoiceRecording.user_id == user_id)
-            .scalar()
-        ) or 0
-        total_hours = total_seconds / 3600
+        # --------------------------------------------
+        # CHANGES HERE: If user_role == L1 or L4,
+        # fetch *all* recordings instead of filtering by user_id
+        # --------------------------------------------
+        if user_role in [RoleEnum.L1, RoleEnum.L4]:
+            total_seconds = db.query(func.sum(VoiceRecording.call_duration)).scalar() or 0
+            total_hours = total_seconds / 3600
 
-        total_recordings = (
-            db.query(func.count(VoiceRecording.id))
-            .filter(VoiceRecording.user_id == user_id)
-            .scalar()
-        ) or 0
+            total_recordings = db.query(func.count(VoiceRecording.id)).scalar() or 0
 
-        avg_length = (
-            db.query(func.avg(VoiceRecording.call_duration))
-            .filter(VoiceRecording.user_id == user_id)
-            .scalar()
-        )
-        avg_minutes = round(avg_length / 60, 2) if avg_length else 0
+            avg_length = db.query(func.avg(VoiceRecording.call_duration)).scalar()
+            avg_minutes = round(avg_length / 60, 2) if avg_length else 0
 
-        hourly_counts = (
-            db.query(
-                func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
-                func.count().label("call_count"),
+            hourly_counts = (
+                db.query(
+                    func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
+                    func.count().label("call_count"),
+                )
+                .group_by(func.extract("hour", VoiceRecording.start_time))
+                .order_by(func.count().desc())
+                .all()
             )
-            .filter(VoiceRecording.user_id == user_id)
-            .group_by(func.extract("hour", VoiceRecording.start_time))
-            .order_by(func.count().desc())
-            .all()
-        )
+        else:
+            # Original logic for any other role
+            total_seconds = (
+                db.query(func.sum(VoiceRecording.call_duration))
+                .filter(VoiceRecording.user_id == user_id)
+                .scalar()
+            ) or 0
+            total_hours = total_seconds / 3600
+
+            total_recordings = (
+                db.query(func.count(VoiceRecording.id))
+                .filter(VoiceRecording.user_id == user_id)
+                .scalar()
+            ) or 0
+
+            avg_length = (
+                db.query(func.avg(VoiceRecording.call_duration))
+                .filter(VoiceRecording.user_id == user_id)
+                .scalar()
+            )
+            avg_minutes = round(avg_length / 60, 2) if avg_length else 0
+
+            hourly_counts = (
+                db.query(
+                    func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
+                    func.count().label("call_count"),
+                )
+                .filter(VoiceRecording.user_id == user_id)
+                .group_by(func.extract("hour", VoiceRecording.start_time))
+                .order_by(func.count().desc())
+                .all()
+            )
 
         peak_hours = {
             int(record.hour_of_day): record.call_count for record in hourly_counts
         }
 
-        total_listening_seconds = (
-            db.query(func.sum(VoiceRecording.listening_time))
-            .filter(VoiceRecording.user_id == user_id)
-            .scalar()
-        ) or 0
-        total_listening_hours = total_listening_seconds / 3600
+        if user_role in [RoleEnum.L1, RoleEnum.L4]:
+            total_listening_seconds = db.query(func.sum(VoiceRecording.listening_time)).scalar() or 0
+            last_listening = (
+                db.query(VoiceRecording.last_listening_time)
+                .order_by(VoiceRecording.last_listening_time.desc())
+                .first()
+            )
+        else:
+            total_listening_seconds = (
+                db.query(func.sum(VoiceRecording.listening_time))
+                .filter(VoiceRecording.user_id == user_id)
+                .scalar()
+            ) or 0
+            last_listening = (
+                db.query(VoiceRecording.last_listening_time)
+                .filter(VoiceRecording.user_id == user_id)
+                .order_by(VoiceRecording.last_listening_time.desc())
+                .first()
+            )
 
-        last_listening = (
-            db.query(VoiceRecording.last_listening_time)
-            .filter(VoiceRecording.user_id == user_id)
-            .order_by(VoiceRecording.last_listening_time.desc())
-            .first()
-        )
+        total_listening_hours = total_listening_seconds / 3600
         last_listening_time = last_listening[0] if last_listening else None
 
         return {
