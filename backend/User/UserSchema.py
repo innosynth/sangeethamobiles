@@ -1,4 +1,6 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List
+
 
 # from enum import Enum
 from datetime import datetime
@@ -60,3 +62,17 @@ class StaffResponse(BaseModel):
 class StaffCreate(BaseModel):
     name: str
     email_id: str
+
+class UserUpdateSchema(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    email: Optional[str] = None
+    user_role: Optional[RoleEnum] = None
+    business_key: Optional[str] = Field(None, min_length=1, max_length=50)
+    store_id: Optional[str] = Field(None, min_length=1, max_length=36)
+    user_status:Optional[StatusEnum] = None
+
+
+class UserUpdateResponse(BaseModel):
+    message: str
+    user_id: str
+    updated_fields: List[str]

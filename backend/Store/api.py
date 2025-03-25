@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from backend.Store.StoreModel import Store
-from backend.Store.StoreSchema import StoreCreate, StoreResponse, StoreSummary
+from backend.Store.StoreSchema import StoreCreate, StoreResponse, StoreSummary, StoreUpdateSchema, StoreUpdateResponse
+from backend.Area.AreaModel import Area
 from backend.db.db import get_session
 from typing_extensions import Annotated
 from backend.schemas.RoleSchema import RoleEnum
 from backend.auth.role_checker import check_role
 from backend.auth.jwt_handler import verify_token
+from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter()
 
@@ -60,49 +62,76 @@ async def read_stores(
         for store in stores
     ]
 
-
-# @router.get("/store-details/{store_id}", response_model=StoreResponse)
-# @check_role([RoleEnum.L0, RoleEnum.L1, RoleEnum.L2, RoleEnum.L3])
-# async def read_store(
-#     store_id: str,
-#     db: Session = Depends(get_session),
-#     token: dict = Depends(verify_token),
-# ):
-#     store = db.query(Store).filter(Store.store_id == store_id).first()
-#     if store is None:
-#         raise HTTPException(status_code=404, detail="Store not found")
-#     return store
-
-@router.put("/edit-store/{store_id}", response_model=dict)
-@check_role([RoleEnum.L4])
+@router.put("/edit-store/{store_id}", response_model=StoreUpdateResponse)
+@check_role([RoleEnum.L4])  # Assuming this decorator handles role validation
 async def edit_store(
     store_id: str,
-    store_update: StoreCreate,
+    store_update: StoreUpdateSchema,  # Using dedicated update schema
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
+    """
+    Update store information (Admin only)
+    
+    - Only L4 (admin) users can perform this action
+    - Validates store exists
+    - Checks for duplicate store codes
+    - Validates area_id exists
+    - Provides detailed error responses
+    """
     try:
+        # Validate store exists
         store = db.query(Store).filter(Store.store_id == store_id).first()
         if not store:
             raise HTTPException(status_code=404, detail="Store not found")
 
-        store.store_name = store_update.store_name
-        store.store_code = store_update.store_code
-        store.store_address = store_update.store_address
-        store.district = store_update.district
-        store.state = store_update.state
-        store.store_status = store_update.store_status
-        store.business_id = store_update.business_id
-        store.area_id = store_update.area_id
+        # Check for store code conflicts (if store_code is being changed)
+        if store_update.store_code and store_update.store_code != store.store_code:
+            existing_store = db.query(Store).filter(
+                Store.store_code == store_update.store_code,
+                Store.store_id != store_id
+            ).first()
+            if existing_store:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Store code already in use by another store"
+                )
+
+        # Validate area exists if being updated
+        if store_update.area_id:
+            area = db.query(Area).filter(Area.area_id == store_update.area_id).first()
+            if not area:
+                raise HTTPException(status_code=400, detail="Invalid area ID")
+
+        # Update only provided fields (partial update support)
+        update_data = store_update.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(store, field, value)
 
         db.commit()
         db.refresh(store)
-        return {"message": "Store updated successfully", "store_id": store.store_id}
 
+        return {
+            "message": "Store updated successfully",
+            "store_id": store.store_id,
+            "updated_fields": list(update_data.keys())
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating store"
+        )
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error updating store: {str(e)}")
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 @router.delete("/delete-store/{store_id}", response_model=dict)
 @check_role([RoleEnum.L4])
