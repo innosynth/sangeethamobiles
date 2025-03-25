@@ -90,7 +90,7 @@ def get_recording(
 
         if not recordings:
             raise HTTPException(status_code=404, detail="No recordings found")
-        print(recordings[1].VoiceRecording.id)
+        # print(recordings[1].VoiceRecording.id)
         return [
             GetRecording(
                 recording_id=rec.VoiceRecording.id,
