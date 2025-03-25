@@ -18,7 +18,8 @@ class RecordingResponse(BaseModel):
 
 
 class GetRecording(BaseModel):
-    staff_id: str
+    recording_id:str
+    user_id: str
     start_time: datetime
     end_time: datetime
     call_duration: float

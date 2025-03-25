@@ -48,14 +48,14 @@ def upload_recording(
         file_url=CallRecoding.file_url,
     )
 
+
 @router.get("/get-recordings", response_model=list[GetRecording])
 def get_recording(
     db: Session = Depends(get_session), token: dict = Depends(verify_token)
 ):
     try:
-        user_id = token.get("user_id")
         role_str = token.get("role")
-        if not user_id:
+        if not role_str:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         try:
@@ -65,37 +65,36 @@ def get_recording(
                 status_code=403, detail="Invalid user role provided in token."
             )
 
+        # Fetch all recordings without filtering by user_id
         query = (
             db.query(
                 VoiceRecording,
                 Store.store_name,
                 Area.area_name
             )
-            .join(User, VoiceRecording.user_id == User.id)
-            .join(Store, User.store_id == Store.store_id)
-            .join(Area, Store.area_id == Area.area_id)
+            .outerjoin(User, VoiceRecording.user_id == User.id)
+            .outerjoin(Store, User.store_id == Store.store_id)
+            .outerjoin(Area, Store.area_id == Area.area_id)
         )
 
         if user_role == RoleEnum.L0:
             # L0 can only see their own recordings
+            user_id = token.get("user_id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Unauthorized")
             query = query.filter(VoiceRecording.user_id == user_id)
-        elif user_role in [RoleEnum.L1, RoleEnum.L4]:
-            # L1 and L4 see all recordings
-            pass
-        else:
-            raise HTTPException(
-                status_code=403,
-                detail="You don't have permission to access this resource.",
-            )
+
+        # L1 and L4 see all recordings, no filter applied
 
         recordings = query.all()
 
         if not recordings:
             raise HTTPException(status_code=404, detail="No recordings found")
-
+        print(recordings[1].VoiceRecording.id)
         return [
             GetRecording(
-                staff_id=rec.VoiceRecording.user_id,
+                recording_id=rec.VoiceRecording.id,
+                user_id=rec.VoiceRecording.user_id,
                 start_time=rec.VoiceRecording.start_time,
                 end_time=rec.VoiceRecording.end_time,
                 call_duration=rec.VoiceRecording.call_duration,
@@ -162,7 +161,8 @@ def get_last_recording(
             raise HTTPException(status_code=404, detail="No recordings found")
 
         return GetRecording(
-            staff_id=last_recording.VoiceRecording.user_id,
+            recording_id=last_recording.VoiceRecording.id,
+            user_id=last_recording.VoiceRecording.user_id,
             start_time=last_recording.VoiceRecording.start_time,
             end_time=last_recording.VoiceRecording.end_time,
             call_duration=last_recording.VoiceRecording.call_duration,

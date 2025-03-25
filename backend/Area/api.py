@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/create-area", response_model=AreaResponse)
-@check_role([RoleEnum.L3,RoleEnum.L4])
+@check_role([RoleEnum.L4])
 async def create_area(
     area: AreaCreate,
     db: Session = Depends(get_session),
