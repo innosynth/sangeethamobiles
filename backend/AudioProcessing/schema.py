@@ -18,6 +18,7 @@ class RecordingResponse(BaseModel):
 
 
 class GetRecording(BaseModel):
+    recording_id:str
     user_id: str
     start_time: datetime
     end_time: datetime
