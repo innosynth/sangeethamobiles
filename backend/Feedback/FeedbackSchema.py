@@ -22,3 +22,17 @@ class FeedbackResponse(BaseModel):
     staff_email: str
     number: Optional[str]
     Billed: Optional[str]
+
+
+class Feedback(BaseModel):
+    id: str
+    user_id: str
+    staff_id: str
+    feedback: str
+    created_at: datetime
+    modified_at: datetime
+    staff_name: str
+    staff_email: str
+    number: Optional[str]
+    Billed: Optional[str]
+    audio_id: Optional[str]

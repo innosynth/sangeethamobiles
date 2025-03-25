@@ -15,6 +15,8 @@ from backend.schemas.RoleSchema import RoleEnum
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from sqlalchemy import func
 from backend.db.db import get_session
+from sqlalchemy.exc import SQLAlchemyError
+from backend.User.UserSchema import UserUpdateSchema, UserUpdateResponse
 import uuid
 from backend.auth.jwt_handler import verify_token
 
@@ -152,46 +154,89 @@ def add_staff(
         staff_status=new_staff.staff_status,
     )
 
-@router.put("/edit-user/{user_id}", response_model=dict)
+@router.put("/edit-user/{user_id}", response_model=UserUpdateResponse)
 def edit_user(
     user_id: str,
-    user_update: UserCreate,
+    user_update: UserUpdateSchema,  # Use a dedicated update schema
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
+    """
+    Update user information (Admin only)
+    
+    - Only L4 (admin) users can perform this action
+    - Validates user exists
+    - Checks for duplicate email
+    - Provides detailed error responses
+    """
     try:
-        token_user_id = token.get("user_id")
-        role_str = token.get("role")
-        if not token_user_id:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-
+        # Authentication and authorization
+        if not (token_user_id := token.get("user_id")):
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
         try:
-            user_role = RoleEnum(role_str)
+            user_role = RoleEnum(token.get("role", ""))
         except ValueError:
-            raise HTTPException(status_code=403, detail="Invalid user role.")
+            raise HTTPException(status_code=403, detail="Invalid user role")
 
         if user_role != RoleEnum.L4:
-            raise HTTPException(status_code=403, detail="Only admins can edit users.")
+            raise HTTPException(
+                status_code=403,
+                detail="Only administrators can modify user information"
+            )
 
+        # Validate target user exists
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        user.name = user_update.name
-        user.email = user_update.email
-        user.user_role = user_update.user_role
-        user.business_key = user_update.business_key
-        user.store_id = user_update.store_id
+        # Check for email conflicts (if email is being changed)
+        if user_update.email and user_update.email != user.email:
+            existing_user = db.query(User).filter(
+                User.email == user_update.email,
+                User.id != user_id
+            ).first()
+            if existing_user:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Email already in use by another account"
+                )
+
+        # Update only provided fields (partial update support)
+        update_data = user_update.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(user, field, value)
+
+        # Validate store exists if being updated
+        if user_update.store_id:
+            store = db.query(Store).filter(Store.store_id == user_update.store_id).first()
+            if not store:
+                raise HTTPException(status_code=400, detail="Invalid store ID")
+
         db.commit()
         db.refresh(user)
-        return {"message": "User updated successfully", "user_id": user.id}
 
-    except HTTPException as e:
-        raise e
+        return {
+            "message": "User updated successfully",
+            "user_id": user.id,
+            "updated_fields": list(update_data.keys())
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating user"
+        )
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error updating user: {str(e)}")
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 @router.delete("/delete-user/{user_id}", response_model=dict)
 def delete_user(
