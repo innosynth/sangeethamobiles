@@ -9,7 +9,7 @@ from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from backend.User.UserModel import Staff
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from backend.User.UserModel import User
 
 router = APIRouter()
@@ -49,35 +49,40 @@ def create_feedback(
         if not staff:
             raise HTTPException(status_code=404, detail="Staff member not found")
 
-        # Parse feedback JSON and check for contact number
-        try:
-            feedback_json = json.loads(feedback_data.feedback)
-            contact_number = feedback_json.get("contact_number")
-            
-            # If contact number exists, check for recent submissions
-            if contact_number:
-                forty_eight_hours_ago = datetime.utcnow() - timedelta(hours=48)
-                recent_feedback = db.query(FeedbackModel).filter(
-                    FeedbackModel.user_id == user_id,
-                    FeedbackModel.created_at > forty_eight_hours_ago,
-                    FeedbackModel.feedback.like(f'%"contact_number":"{contact_number}"%')
-                ).first()
-                
-                if recent_feedback:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Feedback with this contact number was submitted recently (within 48 hours)"
-                    )
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid feedback JSON format")
 
-        # Create new feedback
-        feedback = FeedbackModel(
+        # Check if feedback is already a dict (no need to json.loads)
+        if isinstance(feedback_data.feedback, dict):
+            feedback_json = feedback_data.feedback
+        else:
+            try:
+                feedback_json = json.loads(feedback_data.feedback)
+            except (json.JSONDecodeError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid feedback format - must be valid JSON")
+        
+        contact_number = feedback_data.number
+        
+        # If contact number exists, check for recent submissions
+        if contact_number:
+            forty_eight_hours_ago = datetime.utcnow() - timedelta(hours=48)
+            recent_feedback = db.query(FeedbackModel).filter(
+                FeedbackModel.user_id == user_id,
+                FeedbackModel.created_at > forty_eight_hours_ago,
+                FeedbackModel.feedback.like(f'%"contact_number":"{contact_number}"%')
+            ).first()
+            
+            if recent_feedback:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Feedback with this contact number was submitted recently (within 48 hours)"
+                )
+
+        # Create new feedback - ensure we store as JSON string        feedback = FeedbackModel(
             id=str(uuid.uuid4()),
             audio_id=feedback_data.audio_id,
             user_id=user_id,
             created_by=feedback_data.staff_id,
-            feedback=json.dumps(feedback_data.feedback),
+            feedback=json.dumps(feedback_json) if isinstance(feedback_json, dict) else feedback_data.feedback,
+  ]
             Billed=feedback_data.Billed,
             number=feedback_data.number,
         )
@@ -108,7 +113,7 @@ def create_feedback(
             status_code=500,
             detail=f"Error creating feedback: {str(e)}"
         )
-    
+
 @router.get("/list-feedbacks", response_model=List[Feedback])
 def get_all_feedbacks(
     db: Session = Depends(get_session), 
@@ -132,7 +137,7 @@ def get_all_feedbacks(
         if not feedbacks:
             raise HTTPException(status_code=404, detail="No feedback found")
 
-        # Transform results into response format
+
         return [
             Feedback(
                 id=feedback.id,
