@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/create-store", response_model=StoreResponse)
-@check_role([RoleEnum.L3])
+
 async def create_store(
     store: StoreCreate,
     db: Session = Depends(get_session),
