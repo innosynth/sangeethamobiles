@@ -76,13 +76,13 @@ def create_feedback(
                     detail="Feedback with this contact number was submitted recently (within 48 hours)"
                 )
 
-        # Create new feedback - ensure we store as JSON string        feedback = FeedbackModel(
+        # Create new feedback - ensure we store as JSON string        
+        feedback = FeedbackModel(
             id=str(uuid.uuid4()),
             audio_id=feedback_data.audio_id,
             user_id=user_id,
             created_by=feedback_data.staff_id,
             feedback=json.dumps(feedback_json) if isinstance(feedback_json, dict) else feedback_data.feedback,
-  ]
             Billed=feedback_data.Billed,
             number=feedback_data.number,
         )
