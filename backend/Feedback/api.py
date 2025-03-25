@@ -6,6 +6,7 @@ from backend.db.db import get_session
 from backend.Feedback.FeedbackModel import FeedbackModel
 from backend.Feedback.FeedbackSchema import FeedbackCreate, FeedbackResponse
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
+from backend.User.UserModel import Staff
 import uuid
 import json
 from datetime import datetime
@@ -60,7 +61,7 @@ def create_feedback(
         created_at=feedback.created_at,
         modified_at=feedback.modified_at,
         staff_name=staff.name, 
-        staff_email=staff.email,
+        staff_email=staff.email_id,
         feedback=feedback.feedback,
         number=feedback.number,
         Billed=feedback.Billed,
