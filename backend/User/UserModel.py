@@ -23,6 +23,7 @@ class User(Base):
     reports_to = Column(String(36), nullable=True) # reports to / manager
     business_id = Column(String(36), nullable=False)
     role = Column(Enum(RoleEnum), nullable=False)
+    last_login = Column(DateTime, default=func.current_timestamp(), nullable=True)
     created_at = Column(DateTime, default=func.current_timestamp(), nullable=True)
     modified_at = Column(
         DateTime,

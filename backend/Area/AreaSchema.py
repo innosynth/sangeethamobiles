@@ -1,18 +1,27 @@
+from datetime import datetime
 from pydantic import BaseModel
+from backend.schemas.StatusSchema import StatusEnum
 
 
 class AreaCreate(BaseModel):
     area_name: str
-    sales_id: str  # UUID as a string
-    area_manager_name: str
 
 
-class AreaResponse(AreaCreate):
+class AreaResponse(BaseModel):
     area_id: str
+    area_name: str
+    user_id: str
+    status: StatusEnum
+    created_at: datetime
+    modified_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class AreaSummary(BaseModel):
     area_id: str
     area_name: str
-    sales_id: str
-    area_manager_name: str
+
+    class Config:
+        from_attributes = True

@@ -20,14 +20,14 @@ def verify_password(plain_password, hashed_password):
 
 @router.post("/login")
 def login_user(user_data: LoginSchema, db: Session = Depends(get_session)):
-    user = db.query(User).filter(User.email == user_data.email).first()
+    user = db.query(User).filter(User.email_id == user_data.email).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid email")
     if not verify_password(user_data.password, user.password):
         raise HTTPException(status_code=400, detail="Invalid password")
 
     access_token = create_access_token(
-        data={"sub": user.email, "role": user.user_role, "user_id": user.id},
+        data={"sub": user.email_id, "role": user.role, "user_id": user.user_id},
         expires_delta=timedelta(minutes=480),
     )
 

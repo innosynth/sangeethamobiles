@@ -9,15 +9,7 @@ class StoreCreate(BaseModel):
     store_name: str
     store_code: str
     store_address: str
-    district: str
-    state: str
     store_status: StatusEnum
-    business_id: str
-    area_id: str
-    lat: str
-    long: str
-    pin_code: str
-    store_ph_no: str
 
 
 class StoreResponse(StoreCreate):
@@ -30,24 +22,23 @@ class StoreResponse(StoreCreate):
 
 
 class StoreSummary(BaseModel):
-    store_id: str
-    store_name: str
-    store_code:str
-    district: str
-    state: str
+    L0_id: str
+    L0_name: str
+    L0_code: str
+    L0_addr: str
+    user_id: str
+    status: StatusEnum
+    created_at: datetime
+    modified_at: datetime
 
     class Config:
         from_attributes = True
 
 class StoreUpdateSchema(BaseModel):
-    store_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    store_code: Optional[str] = Field(None, min_length=1, max_length=50)
-    store_address: Optional[str] = Field(None, min_length=1, max_length=255)
-    district: Optional[str] = Field(None, min_length=1, max_length=100)
-    state: Optional[str] = Field(None, min_length=1, max_length=100)
-    store_status: Optional[bool] = None
-    business_id: Optional[str] = Field(None, min_length=1, max_length=36)
-    area_id: Optional[str] = Field(None, min_length=1, max_length=36)
+    L0_name: Optional[str] = Field(None, min_length=1, max_length=100)  # Store Name
+    L0_code: Optional[str] = Field(None, min_length=1, max_length=50)   # Store Code
+    L0_addr: Optional[str] = Field(None, min_length=1, max_length=255)  # Store Address
+    status: Optional[StatusEnum] = None  # Store Status (ACTIVE/INACTIVE)
 
 class StoreUpdateResponse(BaseModel):
     message: str
