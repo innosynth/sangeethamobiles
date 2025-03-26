@@ -8,9 +8,10 @@ from backend.User.UserSchema import (
     StaffResponse,
     StaffCreate,
     CreateUserResponse,
+    StaffResponses,
 )
-from backend.Store.StoreModel import Store
-from backend.Area.AreaModel import Area
+from backend.Store.StoreModel import L0
+from backend.Area.AreaModel import L1
 from backend.schemas.RoleSchema import RoleEnum
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from sqlalchemy import func
@@ -36,23 +37,23 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-
 @router.post("/create-user", response_model=CreateUserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_session)):
-
-    existing_user = db.query(User).filter(User.email == user.email).first()
+    existing_user = db.query(User).filter(User.email_id == user.email_id).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     hashed_password = hash_password(user.password)
     db_user = User(
-        id=str(uuid.uuid4()),
+        user_id=str(uuid.uuid4()),
         name=user.name,
+        email_id=user.email_id,
+        user_code=user.user_code,
         password=hashed_password,
-        email=user.email,
-        user_role=user.user_role,
-        business_key=user.business_key,
-        store_id=user.store_id,
+        user_ph_no=user.user_ph_no,
+        reports_to=user.reports_to,
+        business_id=user.business_id,
+        role=user.role,
     )
 
     db.add(db_user)
@@ -61,33 +62,47 @@ def create_user(user: UserCreate, db: Session = Depends(get_session)):
 
     return db_user
 
-
 @router.get("/get-all-users", response_model=list[UserResponse])
-def read_users(db: Session = Depends(get_session)):
-    users = db.query(User).all()
+def read_users(
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    user_id = token.get("user_id")
+
+    # Get the business_id of the logged-in user
+    current_user = db.query(User.business_id).filter(User.user_id == user_id).first()
+
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    business_id = current_user.business_id
+
+    # Query users filtered by business_id
+    users = db.query(User).filter(User.business_id == business_id).all()
+
     user_data = []
 
     for user in users:
-        store = db.query(Store).filter(Store.store_id == user.store_id).first()
-        store_name = store.store_name if store else "Unknown"
+        store = db.query(L0).filter(L0.user_id == user.user_id).first()
+        store_name = store.L0_name if store else "Unknown"
 
-        # # Ensure area_name is always set
+        # Ensure area_name is always set
         if store:
-            area = db.query(Area).filter(Area.area_id == store.area_id).first()
-            area_name = area.area_name if area else "Unknown"
+            area = db.query(L1).filter(L1.user_id == store.user_id).first()
+            area_name = area.L1_name if area else "Unknown"
         else:
-            area_name = "Unknown"  # Set default value if store is None
+            area_name = "Unknown"
 
         # Calculate total recording duration
         total_duration = (
             db.query(func.sum(VoiceRecording.call_duration))
-            .filter(VoiceRecording.user_id == user.id)
+            .filter(VoiceRecording.user_id == user.user_id)
             .scalar()
             or 0
         )
         total_listening_time = (
             db.query(func.sum(VoiceRecording.listening_time))
-            .filter(VoiceRecording.user_id == user.id)
+            .filter(VoiceRecording.user_id == user.user_id)
             .scalar()
             or 0
         )
@@ -97,25 +112,26 @@ def read_users(db: Session = Depends(get_session)):
         # Count the number of recordings for this user
         recording_count = (
             db.query(func.count(VoiceRecording.id))
-            .filter(VoiceRecording.user_id == user.id)
+            .filter(VoiceRecording.user_id == user.user_id)
             .scalar()
             or 0
         )
 
         user_data.append(
             UserResponse(
-                id=user.id,
+                user_id=user.user_id,
                 name=user.name,
-                email=user.email,
-                user_role=user.user_role,
-                business_key=user.business_key,
-                store_id=user.store_id,
+                email_id=user.email_id,
+                user_code=user.user_code,
+                user_ph_no=user.user_ph_no,
+                reports_to=user.reports_to,
+                business_id=user.business_id,
+                role=user.role,
                 store_name=store_name,
                 area_name=area_name,
-                last_login=user.last_login,
-                user_status=user.user_status,
                 created_at=user.created_at,
                 modified_at=user.modified_at,
+                status=user.status,
                 recording_hours=recording_hours,
                 recording_count=recording_count,
                 listening_hours=listening_hours,
@@ -124,35 +140,6 @@ def read_users(db: Session = Depends(get_session)):
 
     return user_data
 
-
-@router.post("/add-staff", response_model=StaffResponse)
-def add_staff(
-    staff_body: StaffCreate,
-    db: Session = Depends(get_session),
-    token: dict = Depends(verify_token),
-):
-    affilated_user_id = token.get("user_id")
-    if not affilated_user_id:
-        raise HTTPException(status_code=401, detail="Invalid token or user ID missing")
-    new_staff = Staff(
-        name=staff_body.name,
-        email_id=staff_body.email_id,
-        affilated_user_id=affilated_user_id,
-    )
-
-    db.add(new_staff)
-    db.commit()
-    db.refresh(new_staff)
-
-    return StaffResponse(
-        id=new_staff.id,
-        name=new_staff.name,
-        email_id=new_staff.email_id,
-        affilated_user_id=new_staff.affilated_user_id,
-        created_at=new_staff.created_at,
-        modified_at=new_staff.modified_at,
-        staff_status=new_staff.staff_status,
-    )
 
 @router.put("/edit-user/{user_id}", response_model=UserUpdateResponse)
 def edit_user(
@@ -170,8 +157,8 @@ def edit_user(
     - Provides detailed error responses
     """
     try:
-        # Authentication and authorization
-        if not (token_user_id := token.get("user_id")):
+        token_user_id = token.get("user_id")
+        if not token_user_id:
             raise HTTPException(status_code=401, detail="Authentication required")
         
         try:
@@ -185,16 +172,14 @@ def edit_user(
                 detail="Only administrators can modify user information"
             )
 
-        # Validate target user exists
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(User).filter(User.user_id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Check for email conflicts (if email is being changed)
-        if user_update.email and user_update.email != user.email:
+        if user_update.email_id and user_update.email_id != user.email_id:
             existing_user = db.query(User).filter(
-                User.email == user_update.email,
-                User.id != user_id
+                User.email_id == user_update.email_id,
+                User.user_id != user_id
             ).first()
             if existing_user:
                 raise HTTPException(
@@ -202,23 +187,15 @@ def edit_user(
                     detail="Email already in use by another account"
                 )
 
-        # Update only provided fields (partial update support)
         update_data = user_update.dict(exclude_unset=True)
         for field, value in update_data.items():
             setattr(user, field, value)
-
-        # Validate store exists if being updated
-        if user_update.store_id:
-            store = db.query(Store).filter(Store.store_id == user_update.store_id).first()
-            if not store:
-                raise HTTPException(status_code=400, detail="Invalid store ID")
-
         db.commit()
         db.refresh(user)
 
         return {
             "message": "User updated successfully",
-            "user_id": user.id,
+            "user_id": user.user_id,
             "updated_fields": list(update_data.keys())
         }
 
@@ -258,7 +235,7 @@ def delete_user(
         if user_role != RoleEnum.L4:
             raise HTTPException(status_code=403, detail="Only admins can delete users.")
 
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(User).filter(User.user_id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
@@ -271,3 +248,67 @@ def delete_user(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+
+@router.post("/add-staff", response_model=StaffResponse)
+def add_staff(
+    staff_body: StaffCreate,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    user_id = token.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token or user ID missing")
+    new_staff = Staff(
+        name=staff_body.name,
+        email_id=staff_body.email_id,
+        user_id=user_id,
+    )
+
+    db.add(new_staff)
+    db.commit()
+    db.refresh(new_staff)
+
+    return StaffResponse(
+        id=new_staff.id,
+        name=new_staff.name,
+        email_id=new_staff.email_id,
+        affilated_user_id=new_staff.user_id,
+        created_at=new_staff.created_at,
+        modified_at=new_staff.modified_at,
+        staff_status=new_staff.staff_status,
+    )
+
+@router.get("/get-all-staff", response_model=list[StaffResponses])
+async def get_all_staff(
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        # Get the logged-in user's business ID
+        user = db.query(User).filter(User.user_id == token.get("user_id")).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid user")
+
+        # Fetch staff members linked to the same business
+        staff_members = (
+            db.query(Staff)
+            .join(User, User.user_id == Staff.user_id)  # Ensure staff is linked to a valid user
+            .filter(User.business_id == user.business_id)  # Filter by business ID
+            .all()
+        )
+
+        return [
+            StaffResponses(
+                id=staff.id,
+                name=staff.name,
+                email_id=staff.email_id,
+                affiliated_user_id=staff.user_id,
+                created_at=staff.created_at,
+                modified_at=staff.modified_at,
+                staff_status=staff.staff_status,
+            )
+            for staff in staff_members
+        ]
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving staff: {str(e)}")

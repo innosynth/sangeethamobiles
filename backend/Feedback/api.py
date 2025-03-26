@@ -127,13 +127,12 @@ def get_all_feedbacks(
 
         # Query all feedbacks with staff and voice recording information
         feedbacks = (
-            db.query(FeedbackModel, User, VoiceRecording)
-            .join(User, User.id == FeedbackModel.user_id)
+            db.query(FeedbackModel, Staff, VoiceRecording)
+            .join(Staff, Staff.user_id == FeedbackModel.user_id)
             .join(VoiceRecording, VoiceRecording.id == FeedbackModel.audio_id)  # Assuming audio_id references VoiceRecording.id
             .order_by(FeedbackModel.created_at.desc())  # Optional: order by newest first
             .all()
         )
-
         if not feedbacks:
             raise HTTPException(status_code=404, detail="No feedback found")
 
@@ -144,7 +143,7 @@ def get_all_feedbacks(
                 user_id=user_id,
                 staff_id=staff.id,
                 staff_name=staff.name,
-                staff_email=staff.email,
+                staff_email=staff.email_id,
                 feedback=feedback.feedback,
                 number=feedback.number,
                 Billed=feedback.Billed,
