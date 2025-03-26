@@ -10,18 +10,17 @@ def generate_uuid():
     return str(uuid.uuid4())  # Replace this with cuid.cuid() if using CUIDs
 
 
-class Area(Base):
-    __tablename__ = "area"
-
-    area_id = Column(String(36), primary_key=True, default=generate_uuid)
-    area_manager_name = Column(String(255), nullable=False)
-    area_name = Column(String(255), nullable=True)
-    area_manager_ph_no = Column(String(255), nullable=True)
-    sales_id = Column(String(36), nullable=False)  # Foreign key linking to Sales table
-    created_at = Column(DateTime, default=func.current_timestamp())
+class L1(Base):
+    __tablename__ = "L1"
+    L1_id = Column(String(36), primary_key=True, default=generate_uuid)
+    L1_name = Column(String(255), nullable=False) # area district / city
+    user_id = Column(String(36), nullable=False) 
+    status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.ACTIVE)
+    
+    created_at = Column(DateTime, default=func.current_timestamp(), nullable=True)
     modified_at = Column(
-        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+        DateTime,
+        default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        nullable=True,
     )
-
-    # Relationship to Sales table
-    # sales = relationship("Sales", back_populates="areas")
