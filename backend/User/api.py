@@ -159,7 +159,6 @@ def read_users(
 
     return user_data
 
-
 @router.put("/edit-user/{user_id}", response_model=UserUpdateResponse)
 def edit_user(
     user_id: str,
@@ -288,7 +287,7 @@ def add_staff(
     db.refresh(new_staff)
 
     return StaffResponse(
-        id=new_staff.id,
+        staff_id=new_staff.id,
         name=new_staff.name,
         email_id=new_staff.email_id,
         affilated_user_id=new_staff.user_id,

@@ -58,6 +58,7 @@ class UserResponse(BaseModel):
 
 
 class StaffResponse(BaseModel):
+    staff_id: str
     name: str
     email_id: str
     affilated_user_id: str
