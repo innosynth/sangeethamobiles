@@ -83,15 +83,21 @@ def read_users(
     user_data = []
 
     for user in users:
+        # Fetch store name
         store = db.query(L0).filter(L0.user_id == user.user_id).first()
         store_name = store.L0_name if store else "Unknown"
 
-        # Ensure area_name is always set
+        # Fetch area name
+        area_name = "Unknown"
         if store:
             area = db.query(L1).filter(L1.user_id == store.user_id).first()
             area_name = area.L1_name if area else "Unknown"
-        else:
-            area_name = "Unknown"
+
+        # Fetch the name of the person in "reports_to"
+        reports_to_name = "Unknown"
+        if user.reports_to:
+            manager = db.query(User.name).filter(User.user_id == user.reports_to).first()
+            reports_to_name = manager.name if manager else "Unknown"
 
         # Calculate total recording duration
         total_duration = (
@@ -124,7 +130,7 @@ def read_users(
                 email_id=user.email_id,
                 user_code=user.user_code,
                 user_ph_no=user.user_ph_no,
-                reports_to=user.reports_to,
+                reports_to=reports_to_name,  # 🔥 Now returning the name instead of user_id
                 business_id=user.business_id,
                 role=user.role,
                 store_name=store_name,

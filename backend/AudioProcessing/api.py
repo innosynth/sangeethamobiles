@@ -57,7 +57,6 @@ def get_recording(
         # Get user details from token
         role_str = token.get("role")
         user_id = token.get("user_id")
-        business_id = token.get("business_id")
 
         if not role_str or not user_id:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -67,33 +66,27 @@ def get_recording(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role in token.")
 
-        # Base query with joins
+        # Base query with LEFT JOIN to prevent missing data
         query = (
             db.query(
                 VoiceRecording,
-                L0.L0_name.label("store_name"),
-                L1.L1_name.label("area_name")
+                func.coalesce(L0.L0_name, "Unknown").label("store_name"),
+                func.coalesce(L1.L1_name, "Unknown").label("area_name")
             )
             .join(User, VoiceRecording.user_id == User.user_id)
-            .join(L0, User.user_id == L0.user_id)
-            .join(L1, L0.user_id == L1.user_id)
+            .outerjoin(L0, User.user_id == L0.user_id)  # Changed to LEFT JOIN
+            .outerjoin(L1, L0.user_id == L1.user_id)  # Changed to LEFT JOIN
         )
 
         # Role-based access control
         if user_role == RoleEnum.L0:
-            # L0 can only see their own recordings
             query = query.filter(VoiceRecording.user_id == user_id)
-        elif user_role != RoleEnum.L4:
-            # L1, L2, L3 users see recordings only within their business
-            if not business_id:
-                raise HTTPException(status_code=401, detail="Unauthorized: Business ID missing")
-            query = query.filter(User.business_id == business_id)
-        # L4 users see everything (No additional filtering needed)
 
         # Fetch data
         recordings = query.all()
 
-        if not recordings:
+        # ✅ Fix: Check length of recordings instead of `if not recordings`
+        if len(recordings) == 0:
             raise HTTPException(status_code=404, detail="No recordings found")
 
         return [
@@ -106,8 +99,8 @@ def get_recording(
                 audio_length=rec.VoiceRecording.audio_length,
                 listening_time=rec.VoiceRecording.listening_time or 0.0,
                 file_url=rec.VoiceRecording.file_url,
-                store_name=rec.store_name,
-                area_name=rec.area_name,
+                store_name=rec.store_name,  # Now always has a value
+                area_name=rec.area_name,  # Now always has a value
                 created_at=rec.VoiceRecording.created_at,
                 modified_at=rec.VoiceRecording.modified_at,
             )
