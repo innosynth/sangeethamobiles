@@ -28,6 +28,7 @@ def upload_recording(
     end_time: datetime = Form(None),
     staff_id: str = Form(None),
     CallDuration: str = Form(None),
+    store_id:str = Form(None),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -36,7 +37,7 @@ def upload_recording(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID missing from token")
     CallRecoding = upload_recording_service(
-        Recording, staff_id, start_time, end_time, CallDuration, db, token
+        Recording, staff_id, start_time, end_time, CallDuration, store_id, db, token
     )
     return RecordingResponse(
         id=CallRecoding.id,
@@ -66,51 +67,79 @@ def get_recording(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role in token.")
 
-        # Base query with LEFT JOIN to prevent missing data
-        query = (
-            db.query(
-                VoiceRecording,
-                func.coalesce(L0.L0_name, "Unknown").label("store_name"),
-                func.coalesce(L1.L1_name, "Unknown").label("area_name")
-            )
-            .join(User, VoiceRecording.user_id == User.user_id)
-            .outerjoin(L0, User.user_id == L0.user_id)  # Changed to LEFT JOIN
-            .outerjoin(L1, L0.user_id == L1.user_id)  # Changed to LEFT JOIN
-        )
-
+        # Get all recordings
+        recordings_query = db.query(VoiceRecording)
+        
         # Role-based access control
         if user_role == RoleEnum.L0:
-            query = query.filter(VoiceRecording.user_id == user_id)
+            recordings_query = recordings_query.filter(VoiceRecording.user_id == user_id)
 
-        # Fetch data
-        recordings = query.all()
+        recordings = recordings_query.all()
 
-        # ✅ Fix: Check length of recordings instead of `if not recordings`
-        if len(recordings) == 0:
+        if not recordings:
             raise HTTPException(status_code=404, detail="No recordings found")
 
-        return [
-            GetRecording(
-                recording_id=rec.VoiceRecording.id,
-                user_id=rec.VoiceRecording.user_id,
-                start_time=rec.VoiceRecording.start_time,
-                end_time=rec.VoiceRecording.end_time,
-                call_duration=rec.VoiceRecording.call_duration,
-                audio_length=rec.VoiceRecording.audio_length,
-                listening_time=rec.VoiceRecording.listening_time or 0.0,
-                file_url=rec.VoiceRecording.file_url,
-                store_name=rec.store_name,  # Now always has a value
-                area_name=rec.area_name,  # Now always has a value
-                created_at=rec.VoiceRecording.created_at,
-                modified_at=rec.VoiceRecording.modified_at,
+        # Get all unique store_ids from the recordings
+        store_ids = list({rec.store_id for rec in recordings})
+
+        # Get store information (L0) and user (ASM) details
+        store_info = (
+            db.query(
+                L0.L0_id.label("store_id"),
+                L0.L0_name.label("store_name"),
+                L0.L0_code.label("store_code"),
+                L0.L0_addr.label("store_address"),
+                User.name.label("asm_name")  # ASM name from User table
             )
-            for rec in recordings
-        ]
+            .outerjoin(User, L0.user_id == User.user_id)  # Join with User to get ASM name
+            .filter(L0.L0_id.in_(store_ids))
+            .all()
+        )
+
+        # Create a mapping of store_id to store/ASM info
+        store_data = {
+            store.store_id: {
+                "store_name": store.store_name,
+                "store_code": store.store_code,
+                "store_address": store.store_address,
+                "asm_name": store.asm_name or "Unknown"
+            }
+            for store in store_info
+        }
+
+        # Prepare the response
+        result = []
+        for rec in recordings:
+            store = store_data.get(rec.store_id, {
+                "store_name": "Unknown",
+                "store_code": "Unknown",
+                "store_address": "Unknown",
+                "asm_name": "Unknown"
+            })
+            
+            result.append(GetRecording(
+                recording_id=rec.id,
+                user_id=rec.user_id,
+                store_id=rec.store_id,
+                start_time=rec.start_time,
+                end_time=rec.end_time,
+                call_duration=rec.call_duration,
+                audio_length=rec.audio_length,
+                listening_time=rec.listening_time or 0.0,
+                file_url=rec.file_url,
+                store_name=store["store_name"],
+                store_code=store["store_code"],  # Include store code
+                store_address=store["store_address"],  # Include store address
+                asm_name=store["asm_name"],
+                created_at=rec.created_at,
+                modified_at=rec.modified_at,
+            ))
+
+        return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recordings: {str(e)}")
-
-
+    
 @router.get("/get-last-recording", response_model=GetRecording)
 def get_last_recording(
     user_id: str = Query(None, description="User ID to fetch the last recording for"),
@@ -144,10 +173,11 @@ def get_last_recording(
             db.query(
                 VoiceRecording,
                 L0.L0_name.label("store_name"),
-                L1.L1_name.label("area_name")
+                User.name.label("asm_name")  # Fetch ASM name from User table
             )
             .join(User, VoiceRecording.user_id == User.user_id)
             .outerjoin(L0, User.user_id == L0.user_id)
+            .outerjoin(L1, L0.user_id == L1.user_id)
             .filter(VoiceRecording.user_id == user_id)
             .order_by(VoiceRecording.created_at.desc())
         )
@@ -166,8 +196,9 @@ def get_last_recording(
             audio_length=last_recording.VoiceRecording.audio_length,
             listening_time=last_recording.VoiceRecording.listening_time or 0.0, 
             file_url=last_recording.VoiceRecording.file_url,
-            store_name=last_recording.store_name,
-            area_name=last_recording.area_name,
+            store_name=last_recording.store_name or "Unknown",
+            # area_name=last_recording.area_name or "Unknown",
+            asm_name=last_recording.asm_name or "Unknown",  # Include asm_name in response
             created_at=last_recording.VoiceRecording.created_at,
             modified_at=last_recording.VoiceRecording.modified_at,
         )

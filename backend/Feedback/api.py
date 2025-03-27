@@ -125,33 +125,40 @@ def get_all_feedbacks(
         if not user_id:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
-        # Query all feedbacks with staff and voice recording information
+        # Query feedbacks with staff name and audio URL
         feedbacks = (
-            db.query(FeedbackModel, Staff, VoiceRecording)
-            .join(Staff, Staff.user_id == FeedbackModel.user_id)
-            .join(VoiceRecording, VoiceRecording.id == FeedbackModel.audio_id)  # Assuming audio_id references VoiceRecording.id
-            .order_by(FeedbackModel.created_at.desc())  # Optional: order by newest first
-            .distinct()
+            db.query(
+                FeedbackModel,
+                Staff.name.label("staff_name"),
+                Staff.email_id.label("staff_email"),
+                VoiceRecording.file_url.label("audio_url")
+            )
+            .join(Staff, Staff.id == FeedbackModel.created_by)  # Changed to join on staff_id
+            .join(VoiceRecording, VoiceRecording.id == FeedbackModel.audio_id)
+            .filter(FeedbackModel.user_id == user_id)  # Filter by current user
+            .order_by(FeedbackModel.created_at.desc())
+            .all()
         )
+
         if not feedbacks:
             raise HTTPException(status_code=404, detail="No feedback found")
 
-
+        # Construct response
         return [
             Feedback(
                 id=feedback.id,
-                user_id=user_id,
-                staff_id=staff.id,
-                staff_name=staff.name,
-                staff_email=staff.email_id,
+                user_id=feedback.user_id,
+                staff_id=feedback.created_by,  # Use actual staff_id from FeedbackModel
+                staff_name=staff_name,
+                staff_email=staff_email,
                 feedback=feedback.feedback,
                 number=feedback.number,
                 Billed=feedback.Billed,
                 created_at=feedback.created_at,
                 modified_at=feedback.modified_at,
-                audio_url=voice_recording.file_url  # Add audio_url from voice recording
+                audio_url=audio_url
             )
-            for feedback, staff, voice_recording in feedbacks
+            for feedback, staff_name, staff_email, audio_url in feedbacks
         ]
 
     except HTTPException:
@@ -161,7 +168,7 @@ def get_all_feedbacks(
             status_code=500,
             detail=f"Error fetching feedbacks: {str(e)}"
         )
-
+    
 @router.get("/feedback-rating", response_model=dict)
 def get_feedback_rating(
     db: Session = Depends(get_session), token: dict = Depends(verify_token)

@@ -16,6 +16,7 @@ class VoiceRecording(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), nullable=False)
     staff_id = Column(String(36), nullable=False)
+    store_id = Column(String(36), nullable=False)
     audio_length = Column(Float, nullable=False)
     file_url = Column(Text, nullable=False)
     start_time = Column(DateTime, nullable=False)
