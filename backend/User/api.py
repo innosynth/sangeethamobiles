@@ -77,45 +77,64 @@ def read_users(
 
     business_id = current_user.business_id
 
-    # Query users filtered by business_id
+    # Fetch all users in the business in one query
     users = db.query(User).filter(User.business_id == business_id).all()
+
+    if not users:
+        return []
+
+    user_ids = [user.user_id for user in users]
+    reports_to_ids = [user.reports_to for user in users if user.reports_to]
+
+    # Batch fetch L0 (store names)
+    l0_data = (
+        db.query(L0.user_id, L0.L0_name)
+        .filter(L0.user_id.in_(user_ids))
+        .all()
+    )
+    store_map = {l0.user_id: l0.L0_name for l0 in l0_data}
+
+    # Batch fetch L1 (area names)
+    l1_data = (
+        db.query(L1.user_id, L1.L1_name)
+        .filter(L1.user_id.in_(user_ids))
+        .all()
+    )
+    area_map = {l1.user_id: l1.L1_name for l1 in l1_data}
+
+    # Batch fetch manager names using reports_to (email_id mapping)
+    managers = (
+        db.query(User.email_id, User.name)
+        .filter(User.email_id.in_(reports_to_ids))
+        .all()
+    )
+    manager_map = {m.email_id: m.name for m in managers}
+
+    # Batch fetch total recording durations, counts, and listening times
+    recording_data = (
+        db.query(
+            VoiceRecording.user_id,
+            func.sum(VoiceRecording.call_duration).label("total_duration"),
+            func.sum(VoiceRecording.listening_time).label("total_listening"),
+            func.count(VoiceRecording.id).label("recording_count"),
+        )
+        .filter(VoiceRecording.user_id.in_(user_ids))
+        .group_by(VoiceRecording.user_id)
+        .all()
+    )
+    recording_map = {rec.user_id: rec for rec in recording_data}
 
     user_data = []
 
     for user in users:
-        store = db.query(L0).filter(L0.user_id == user.user_id).first()
-        store_name = store.L0_name if store else "Unknown"
+        store_name = store_map.get(user.user_id, "Unknown")
+        area_name = area_map.get(user.user_id, "Unknown")
+        reports_to_name = manager_map.get(user.reports_to, "Unknown")
 
-        # Ensure area_name is always set
-        if store:
-            area = db.query(L1).filter(L1.user_id == store.user_id).first()
-            area_name = area.L1_name if area else "Unknown"
-        else:
-            area_name = "Unknown"
-
-        # Calculate total recording duration
-        total_duration = (
-            db.query(func.sum(VoiceRecording.call_duration))
-            .filter(VoiceRecording.user_id == user.user_id)
-            .scalar()
-            or 0
-        )
-        total_listening_time = (
-            db.query(func.sum(VoiceRecording.listening_time))
-            .filter(VoiceRecording.user_id == user.user_id)
-            .scalar()
-            or 0
-        )
-        listening_hours = round(total_listening_time / 3600, 2)
-        recording_hours = round(total_duration / 3600, 2)
-
-        # Count the number of recordings for this user
-        recording_count = (
-            db.query(func.count(VoiceRecording.id))
-            .filter(VoiceRecording.user_id == user.user_id)
-            .scalar()
-            or 0
-        )
+        rec_stats = recording_map.get(user.user_id)
+        recording_hours = round((rec_stats.total_duration or 0) / 3600, 2) if rec_stats else 0
+        listening_hours = round((rec_stats.total_listening or 0) / 3600, 2) if rec_stats else 0
+        recording_count = rec_stats.recording_count if rec_stats else 0
 
         user_data.append(
             UserResponse(
@@ -124,7 +143,7 @@ def read_users(
                 email_id=user.email_id,
                 user_code=user.user_code,
                 user_ph_no=user.user_ph_no,
-                reports_to=user.reports_to,
+                reports_to=reports_to_name,
                 business_id=user.business_id,
                 role=user.role,
                 store_name=store_name,
