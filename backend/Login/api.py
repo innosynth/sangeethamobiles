@@ -36,6 +36,7 @@ def login_user(user_data: LoginSchema, db: Session = Depends(get_session)):
     db.refresh(user)
 
     return {
+        "user_id": user.user_id,
         "message": "Login successful",
         "access_token": access_token,
         "token_type": "bearer",
