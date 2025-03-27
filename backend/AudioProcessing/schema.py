@@ -27,6 +27,7 @@ class GetRecording(BaseModel):
     listening_time: float
     file_url: str
     store_name: Optional[str] = None  # Allowing None if missing
-    area_name: Optional[str] = None   # Allowing None if missing
+    # area_name: Optional[str] = None   # Allowing None if missing
+    asm_name:str
     created_at: datetime
     modified_at: datetime

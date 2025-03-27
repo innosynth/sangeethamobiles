@@ -11,7 +11,7 @@ settings = TenantSettings()
 
 
 def upload_recording(
-    Recording, staff_id, start_time, end_time, CallDuration, db, token
+    Recording, staff_id, start_time, end_time, CallDuration, store_id, db, token
 ):
     affilated_user_id = token.get("user_id")
     S3_access_key = settings.S3_ACCESS_KEY
@@ -53,6 +53,7 @@ def upload_recording(
         file_url=url,
         start_time=start_time,
         end_time=end_time,
+        store_id=store_id,
         call_duration=CallDuration,
     )
 
