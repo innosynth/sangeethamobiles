@@ -122,24 +122,27 @@ def get_all_feedbacks(
     try:
         # Authentication check
         user_id = token.get("user_id")
-        if not user_id:
+        role = token.get("role")  # Extract role from the token
+        if not user_id or role is None:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
-        # Query feedbacks with staff name and audio URL
-        feedbacks = (
+        # Base query for feedbacks with staff name and audio URL
+        query = (
             db.query(
                 FeedbackModel,
                 Staff.name.label("staff_name"),
                 Staff.email_id.label("staff_email"),
                 VoiceRecording.file_url.label("audio_url")
             )
-            .join(Staff, Staff.id == FeedbackModel.created_by)  # Changed to join on staff_id
+            .join(Staff, Staff.id == FeedbackModel.created_by)
             .join(VoiceRecording, VoiceRecording.id == FeedbackModel.audio_id)
-            .filter(FeedbackModel.user_id == user_id)  # Filter by current user
-            .order_by(FeedbackModel.created_at.desc())
-            .all()
         )
 
+        # If user is not role level 4, filter by their user_id
+        if role < 4:
+            query = query.filter(FeedbackModel.user_id == user_id)
+
+        feedbacks = query.order_by(FeedbackModel.created_at.desc()).all()
         if not feedbacks:
             raise HTTPException(status_code=404, detail="No feedback found")
 
@@ -148,7 +151,7 @@ def get_all_feedbacks(
             Feedback(
                 id=feedback.id,
                 user_id=feedback.user_id,
-                staff_id=feedback.created_by,  # Use actual staff_id from FeedbackModel
+                staff_id=feedback.created_by,
                 staff_name=staff_name,
                 staff_email=staff_email,
                 feedback=feedback.feedback,
@@ -174,13 +177,18 @@ def get_feedback_rating(
     db: Session = Depends(get_session), token: dict = Depends(verify_token)
 ):
     user_id = token.get("user_id")
-    if not user_id:
+    role = token.get("role")  # Extract role from the token
+
+    if not user_id or role is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Fetch all voice recordings for the user
-    voice_recordings = (
-        db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id).all()
-    )
+    # Query voice recordings based on role
+    if role == 4:
+        voice_recordings = db.query(VoiceRecording).all()  # Fetch all voice recordings
+    else:
+        voice_recordings = (
+            db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id).all()
+        )
 
     if not voice_recordings:
         raise HTTPException(status_code=404, detail="No voice recordings found")
@@ -198,8 +206,8 @@ def get_feedback_rating(
 
     for feedback in feedbacks:
         try:
-            feedback_data = json.loads(feedback.feedback) 
-            call_rating = feedback_data.get("callRating", "").lower() 
+            feedback_data = json.loads(feedback.feedback)  # Convert JSON feedback
+            call_rating = feedback_data.get("callRating", "").lower()
             # Categorize callRating
             if call_rating == "good":
                 positive_feedbacks += 1
@@ -212,7 +220,7 @@ def get_feedback_rating(
             continue  # Skip invalid JSON feedback entries
 
     return {
-        "user_id": user_id,
+        "user_id": user_id if role < 4 else "Super Admin",
         "total_feedbacks": total_feedbacks,
         "positive_feedbacks": positive_feedbacks,
         "negative_feedbacks": negative_feedbacks,
