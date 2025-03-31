@@ -16,7 +16,7 @@ from backend.auth.role_checker import check_role
 from backend.auth.jwt_handler import verify_token
 from sqlalchemy.exc import SQLAlchemyError
 from backend.User.UserModel import User
-
+from backend.Store.service import extract_stores
 router = APIRouter()
 
 
@@ -56,16 +56,11 @@ async def read_stores(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-
+    user_id = token.get("user_id")
+    user_role = token.get("role")
     business_id = User.business_id
 
-    # Fetch only stores that belong to the user's business
-    stores = (
-        db.query(L0)
-        .join(User, L0.user_id == User.user_id)  # Join L0 with User table
-        .filter(User.business_id == business_id)  # Filter by business_id
-        .all()
-    )
+    stores = extract_stores(business_id, user_id, user_role, db)
 
     return [
         StoreSummary(
