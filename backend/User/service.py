@@ -40,61 +40,61 @@ def extract_users(user_id, user_role, db):
 
     business_id = current_user.business_id
     email_id = current_user.email_id
+
+    # Fetch all users in one optimized query
+    def fetch_users(email_ids):
+        return db.query(User).filter(User.reports_to.in_(email_ids)).all()
+
+    users = []
+    email_ids = [email_id]
+
     if user_role == RoleEnum.L1:
-        users = get_users(db, email_id)
+        users = fetch_users(email_ids)
 
     elif user_role == RoleEnum.L2:
-        L1_users = []
-        L0_users = []
-        users = get_users(db, email_id)
-        for L1_user in users:
-            L1_users = get_users(db, L1_user.email_id)
-            users.extend(L1_users)
-        for L0_user in L1_users:
-            L0_users = get_users(db, L0_user.email_id)
-            users.extend(L0_users)
+        L1_users = fetch_users(email_ids)
+        email_ids = [user.email_id for user in L1_users]
+        L0_users = fetch_users(email_ids)
+        users = L1_users + L0_users
 
     elif user_role == RoleEnum.L3:
-        L2_users = []
-        L1_users = []
-        L0_users = []
-        users = get_users(db, email_id)
-        for L2_user in users:
-            L2_users = get_users(db, L2_user.email_id)
-            users.extend(L2_users)
-        for L1_user in users:
-            L1_users = get_users(db, L1_user.email_id)
-            users.extend(L1_users)
-        for L0_user in L1_users:
-            L0_users = get_users(db, L0_user.email_id)
-            users.extend(L0_users)
+        L2_users = fetch_users(email_ids)
+        email_ids = [user.email_id for user in L2_users]
+        L1_users = fetch_users(email_ids)
+        email_ids = [user.email_id for user in L1_users]
+        L0_users = fetch_users(email_ids)
+        users = L2_users + L1_users + L0_users
 
     elif user_role == RoleEnum.L4:
         users = get_l4_users(db, business_id)
 
     if not users:
         return []
-    users = list(set(users))
+
+    # Remove duplicates and extract user IDs
+    users = list({user.user_id: user for user in users}.values())  
     user_ids = [user.user_id for user in users]
-    reports_to_ids = [user.reports_to for user in users if user.reports_to]
+    reports_to_ids = list(set(user.reports_to for user in users if user.reports_to))
 
-    l0_data = db.query(L0.user_id, L0.L0_name).filter(L0.user_id.in_(user_ids)).all()
-    store_map = {l0.user_id: l0.L0_name for l0 in l0_data}
+    # Batch fetch all necessary data in one go
+    store_map = {
+        l0.user_id: l0.L0_name
+        for l0 in db.query(L0.user_id, L0.L0_name).filter(L0.user_id.in_(user_ids)).all()
+    }
 
-    l1_data = db.query(L1.user_id, L1.L1_name).filter(L1.user_id.in_(user_ids)).all()
-    area_map = {l1.user_id: l1.L1_name for l1 in l1_data}
+    area_map = {
+        l1.user_id: l1.L1_name
+        for l1 in db.query(L1.user_id, L1.L1_name).filter(L1.user_id.in_(user_ids)).all()
+    }
 
-    # Batch fetch manager names using reports_to (email_id mapping)
-    managers = (
-        db.query(User.email_id, User.name)
-        .filter(User.email_id.in_(reports_to_ids))
-        .all()
-    )
-    manager_map = {m.email_id: m.name for m in managers}
+    manager_map = {
+        m.email_id: m.name
+        for m in db.query(User.email_id, User.name).filter(User.email_id.in_(reports_to_ids)).all()
+    }
 
-    # Batch fetch total recording durations, counts, and listening times
-    recording_data = (
-        db.query(
+    recording_map = {
+        rec.user_id: rec
+        for rec in db.query(
             VoiceRecording.user_id,
             func.sum(VoiceRecording.call_duration).label("total_duration"),
             func.sum(VoiceRecording.listening_time).label("total_listening"),
@@ -103,44 +103,32 @@ def extract_users(user_id, user_role, db):
         .filter(VoiceRecording.user_id.in_(user_ids))
         .group_by(VoiceRecording.user_id)
         .all()
-    )
-    recording_map = {rec.user_id: rec for rec in recording_data}
+    }
 
-    user_data = []
-
-    for user in users:
-        store_name = store_map.get(user.user_id, "Unknown")
-        area_name = area_map.get(user.user_id, "Unknown")
-        reports_to_name = manager_map.get(user.reports_to, "Unknown")
-
-        rec_stats = recording_map.get(user.user_id)
-        recording_hours = (
-            round((rec_stats.total_duration or 0) / 3600, 2) if rec_stats else 0
+    # Construct user response
+    user_data = [
+        UserResponse(
+            user_id=user.user_id,
+            name=user.name,
+            email_id=user.email_id,
+            user_code=user.user_code,
+            user_ph_no=user.user_ph_no,
+            reports_to=manager_map.get(user.reports_to, "Unknown"),
+            business_id=user.business_id,
+            role=user.role,
+            store_name=store_map.get(user.user_id, "Unknown"),
+            area_name=area_map.get(user.user_id, "Unknown"),
+            created_at=user.created_at,
+            modified_at=user.modified_at,
+            status=user.status,
+            recording_hours=round((recording_map.get(user.user_id).total_duration or 0) / 3600, 2)
+                if user.user_id in recording_map else 0,
+            recording_count=recording_map.get(user.user_id).recording_count if user.user_id in recording_map else 0,
+            listening_hours=round((recording_map.get(user.user_id).total_listening or 0) / 3600, 2)
+                if user.user_id in recording_map else 0,
         )
-        listening_hours = (
-            round((rec_stats.total_listening or 0) / 3600, 2) if rec_stats else 0
-        )
-        recording_count = rec_stats.recording_count if rec_stats else 0
+        for user in users
+    ]
 
-        user_data.append(
-            UserResponse(
-                user_id=user.user_id,
-                name=user.name,
-                email_id=user.email_id,
-                user_code=user.user_code,
-                user_ph_no=user.user_ph_no,
-                reports_to=reports_to_name,
-                business_id=user.business_id,
-                role=user.role,
-                store_name=store_name,
-                area_name=area_name,
-                created_at=user.created_at,
-                modified_at=user.modified_at,
-                status=user.status,
-                recording_hours=recording_hours,
-                recording_count=recording_count,
-                listening_hours=listening_hours,
-            )
-        )
 
     return user_data
