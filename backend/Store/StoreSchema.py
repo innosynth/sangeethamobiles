@@ -4,7 +4,6 @@ from backend.schemas.StatusSchema import StatusEnum
 from typing import Optional, List
 
 
-
 class StoreCreate(BaseModel):
     store_name: str
     store_code: str
@@ -34,11 +33,13 @@ class StoreSummary(BaseModel):
     class Config:
         from_attributes = True
 
+
 class StoreUpdateSchema(BaseModel):
     L0_name: Optional[str] = Field(None, min_length=1, max_length=100)  # Store Name
-    L0_code: Optional[str] = Field(None, min_length=1, max_length=50)   # Store Code
+    L0_code: Optional[str] = Field(None, min_length=1, max_length=50)  # Store Code
     L0_addr: Optional[str] = Field(None, min_length=1, max_length=255)  # Store Address
     status: Optional[StatusEnum] = None  # Store Status (ACTIVE/INACTIVE)
+
 
 class StoreUpdateResponse(BaseModel):
     message: str

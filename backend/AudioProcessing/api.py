@@ -1,7 +1,7 @@
 import os
 import datetime
 from fastapi import APIRouter, UploadFile, File, Form, Query
-
+from typing import Optional
 from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -28,7 +28,7 @@ def upload_recording(
     end_time: datetime = Form(None),
     staff_id: str = Form(None),
     CallDuration: str = Form(None),
-    store_id:str = Form(None),
+    store_id: str = Form(None),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -49,97 +49,119 @@ def upload_recording(
         file_url=CallRecoding.file_url,
     )
 
+
 @router.get("/get-recordings", response_model=list[GetRecording])
-def get_recording(
-    db: Session = Depends(get_session), 
-    token: dict = Depends(verify_token)
+def get_recordings(
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ):
     try:
-        # Get user details from token
-        role_str = token.get("role")
         user_id = token.get("user_id")
+        user_role = token.get("role")
+        if not start_date or not end_date:
+            end_date_obj = datetime.utcnow()
+            start_date_obj = end_date_obj - timedelta(days=30)
+        else:
+            try:
+                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
 
-        if not role_str or not user_id:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+                if start_date_obj.date() == end_date_obj.date():
+                    end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+                )
 
-        try:
-            user_role = RoleEnum(role_str)
-        except ValueError:
-            raise HTTPException(status_code=403, detail="Invalid user role in token.")
+        if start_date_obj > end_date_obj:
+            raise HTTPException(
+                status_code=400, detail="Start date must be before end date"
+            )
 
-        # Get all recordings
-        recordings_query = db.query(VoiceRecording)
-        
-        # Role-based access control
+        recordings_query = db.query(VoiceRecording).filter(
+            VoiceRecording.created_at >= start_date_obj,
+            VoiceRecording.created_at <= end_date_obj,
+        )
+
         if user_role == RoleEnum.L0:
-            recordings_query = recordings_query.filter(VoiceRecording.user_id == user_id)
+            recordings_query = recordings_query.filter(
+                VoiceRecording.user_id == user_id
+            )
 
         recordings = recordings_query.all()
 
         if not recordings:
-            raise HTTPException(status_code=404, detail="No recordings found")
+            raise HTTPException(
+                status_code=404, detail="No recordings found for the given period"
+            )
 
-        # Get all unique store_ids from the recordings
         store_ids = list({rec.store_id for rec in recordings})
 
-        # Get store information (L0) and user (ASM) details
         store_info = (
             db.query(
                 L0.L0_id.label("store_id"),
                 L0.L0_name.label("store_name"),
                 L0.L0_code.label("store_code"),
                 L0.L0_addr.label("store_address"),
-                User.name.label("asm_name")  # ASM name from User table
+                User.name.label("asm_name"),
             )
-            .outerjoin(User, L0.user_id == User.user_id)  # Join with User to get ASM name
+            .outerjoin(User, L0.user_id == User.user_id)
             .filter(L0.L0_id.in_(store_ids))
             .all()
         )
 
-        # Create a mapping of store_id to store/ASM info
         store_data = {
             store.store_id: {
                 "store_name": store.store_name,
                 "store_code": store.store_code,
                 "store_address": store.store_address,
-                "asm_name": store.asm_name or "Unknown"
+                "asm_name": store.asm_name or "Unknown",
             }
             for store in store_info
         }
 
-        # Prepare the response
         result = []
         for rec in recordings:
-            store = store_data.get(rec.store_id, {
-                "store_name": "Unknown",
-                "store_code": "Unknown",
-                "store_address": "Unknown",
-                "asm_name": "Unknown"
-            })
-            
-            result.append(GetRecording(
-                recording_id=rec.id,
-                user_id=rec.user_id,
-                store_id=rec.store_id,
-                start_time=rec.start_time,
-                end_time=rec.end_time,
-                call_duration=rec.call_duration,
-                audio_length=rec.audio_length,
-                listening_time=rec.listening_time or 0.0,
-                file_url=rec.file_url,
-                store_name=store["store_name"],
-                store_code=store["store_code"],  # Include store code
-                store_address=store["store_address"],  # Include store address
-                asm_name=store["asm_name"],
-                created_at=rec.created_at,
-                modified_at=rec.modified_at,
-            ))
+            store = store_data.get(
+                rec.store_id,
+                {
+                    "store_name": "Unknown",
+                    "store_code": "Unknown",
+                    "store_address": "Unknown",
+                    "asm_name": "Unknown",
+                },
+            )
+
+            result.append(
+                GetRecording(
+                    recording_id=rec.id,
+                    user_id=rec.user_id,
+                    store_id=rec.store_id,
+                    start_time=rec.start_time,
+                    end_time=rec.end_time,
+                    call_duration=rec.call_duration,
+                    audio_length=rec.audio_length,
+                    listening_time=rec.listening_time or 0.0,
+                    file_url=rec.file_url,
+                    store_name=store["store_name"],
+                    store_code=store["store_code"],
+                    store_address=store["store_address"],
+                    asm_name=store["asm_name"],
+                    created_at=rec.created_at,
+                    modified_at=rec.modified_at,
+                )
+            )
 
         return result
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching recordings: {str(e)}")
-    
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching recordings: {str(e)}"
+        )
+
+
 @router.get("/get-last-recording", response_model=GetRecording)
 def get_last_recording(
     user_id: str = Query(None, description="User ID to fetch the last recording for"),
@@ -173,7 +195,7 @@ def get_last_recording(
             db.query(
                 VoiceRecording,
                 L0.L0_name.label("store_name"),
-                User.name.label("asm_name")  # Fetch ASM name from User table
+                User.name.label("asm_name"),  # Fetch ASM name from User table
             )
             .join(User, VoiceRecording.user_id == User.user_id)
             .outerjoin(L0, User.user_id == L0.user_id)
@@ -194,11 +216,12 @@ def get_last_recording(
             end_time=last_recording.VoiceRecording.end_time,
             call_duration=last_recording.VoiceRecording.call_duration,
             audio_length=last_recording.VoiceRecording.audio_length,
-            listening_time=last_recording.VoiceRecording.listening_time or 0.0, 
+            listening_time=last_recording.VoiceRecording.listening_time or 0.0,
             file_url=last_recording.VoiceRecording.file_url,
             store_name=last_recording.store_name or "Unknown",
             # area_name=last_recording.area_name or "Unknown",
-            asm_name=last_recording.asm_name or "Unknown",  # Include asm_name in response
+            asm_name=last_recording.asm_name
+            or "Unknown",  # Include asm_name in response
             created_at=last_recording.VoiceRecording.created_at,
             modified_at=last_recording.VoiceRecording.modified_at,
         )
@@ -243,9 +266,7 @@ def get_daily_recording_hours(
 
         today = datetime.utcnow()
         if time_period == "week":
-            start_date = today - timedelta(
-                days=today.weekday()
-            )
+            start_date = today - timedelta(days=today.weekday())
         elif time_period == "month":
             start_date = today.replace(day=1)
         elif time_period == "year":
@@ -301,7 +322,9 @@ def get_recordings_insights(
         try:
             user_role = RoleEnum(role_str)
         except ValueError:
-            raise HTTPException(status_code=403, detail="Invalid user role provided in token.")
+            raise HTTPException(
+                status_code=403, detail="Invalid user role provided in token."
+            )
 
         # If no user_id is provided, use the token’s user_id
         if user_id is None:
@@ -326,9 +349,7 @@ def get_recordings_insights(
         total_hours = total_seconds / 3600
 
         total_recordings = (
-            db.query(func.count(VoiceRecording.id))
-            .filter(user_filter)
-            .scalar()
+            db.query(func.count(VoiceRecording.id)).filter(user_filter).scalar()
         ) or 0
 
         avg_length = (
@@ -349,7 +370,9 @@ def get_recordings_insights(
             .all()
         )
 
-        peak_hours = {int(record.hour_of_day): record.call_count for record in hourly_counts}
+        peak_hours = {
+            int(record.hour_of_day): record.call_count for record in hourly_counts
+        }
 
         # Total listening time
         total_listening_seconds = (
@@ -378,7 +401,9 @@ def get_recordings_insights(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching recordings insights: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching recordings insights: {e}"
+        )
 
 
 @router.put("/update-listening-time", response_model=dict)
@@ -419,6 +444,7 @@ def update_listening_time(
             status_code=500, detail=f"Error updating listening time: {e}"
         )
 
+
 @router.delete("/delete-recording/{recording_id}", response_model=dict)
 def delete_recording(
     recording_id: str,
@@ -437,16 +463,23 @@ def delete_recording(
             raise HTTPException(status_code=403, detail="Invalid user role.")
 
         if user_role != RoleEnum.L4:
-            raise HTTPException(status_code=403, detail="Only admins can delete recordings.")
+            raise HTTPException(
+                status_code=403, detail="Only admins can delete recordings."
+            )
 
-        recording = db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
+        recording = (
+            db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
+        )
 
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
 
         db.delete(recording)
         db.commit()
-        return {"message": "Recording deleted successfully", "recording_id": recording_id}
+        return {
+            "message": "Recording deleted successfully",
+            "recording_id": recording_id,
+        }
 
     except Exception as e:
         db.rollback()

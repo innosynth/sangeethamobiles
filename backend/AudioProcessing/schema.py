@@ -18,7 +18,7 @@ class RecordingResponse(BaseModel):
 
 
 class GetRecording(BaseModel):
-    recording_id:str
+    recording_id: str
     user_id: str
     start_time: datetime
     end_time: datetime
@@ -28,6 +28,6 @@ class GetRecording(BaseModel):
     file_url: str
     store_name: Optional[str] = None  # Allowing None if missing
     # area_name: Optional[str] = None   # Allowing None if missing
-    asm_name:str
+    asm_name: str
     created_at: datetime
     modified_at: datetime
