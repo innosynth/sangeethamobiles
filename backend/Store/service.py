@@ -1,24 +1,12 @@
 
 from backend.Store.StoreModel import L0
-from backend.User.UserModel import User
-from backend.schemas.RoleSchema import RoleEnum
-
-def get_stores(db):
-    # stores = (
-    #     db.query(L0)
-    #     .join(User, L0.user_id == User.user_id).all()
-    # )
-    pass
-
+from backend.User.service import extract_users
 
 def extract_stores(business_id, user_id, role, db):
-    if role == RoleEnum.L1:
-        stores = db.query(L0).filter(L0.user_id == user_id).all()
+    users = extract_users(user_id, role, db)
+    stores = []
+    for user in users:
+        store = db.query(L0).filter(L0.user_id == user.user_id).all()
+        stores.extend(store)
 
-    elif role == RoleEnum.L2:
-        pass
-    elif role == RoleEnum.L3:
-        pass
-
-    elif role == RoleEnum.L4:
-        pass
+    return stores
