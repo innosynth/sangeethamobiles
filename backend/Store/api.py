@@ -17,6 +17,7 @@ from backend.auth.jwt_handler import verify_token
 from sqlalchemy.exc import SQLAlchemyError
 from backend.User.UserModel import User
 from backend.Store.service import extract_stores
+
 router = APIRouter()
 
 
@@ -51,7 +52,7 @@ async def create_store(
 
 
 @router.get("/get-all-stores", response_model=list[StoreSummary])
-@check_role([RoleEnum.L0, RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
+@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 async def read_stores(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),

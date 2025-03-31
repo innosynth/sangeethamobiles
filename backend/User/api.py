@@ -21,6 +21,7 @@ from backend.User.UserSchema import UserUpdateSchema, UserUpdateResponse
 import uuid
 from backend.User.service import extract_users
 from backend.auth.jwt_handler import verify_token
+from backend.auth.role_checker import check_role
 
 # from backend.utils.password import hash_password
 from passlib.context import CryptContext
@@ -66,6 +67,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_session)):
 
 
 @router.get("/get-all-users", response_model=list[UserResponse])
+@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 def read_users(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
@@ -210,39 +212,36 @@ def add_staff(
     )
 
 
-@router.get("/get-all-staff", response_model=list[StaffResponses])
-async def get_all_staff(
-    db: Session = Depends(get_session),
-    token: dict = Depends(verify_token),
-):
-    try:
-        # Get the logged-in user's business ID
-        user = db.query(User).filter(User.user_id == token.get("user_id")).first()
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid user")
+# @router.get("/get-all-staff", response_model=list[StaffResponses])
+# async def get_all_staff(
+#     db: Session = Depends(get_session),
+#     token: dict = Depends(verify_token),
+# ):
+#     try:
+#         user = db.query(User).filter(User.user_id == token.get("user_id")).first()
+#         if not user:
+#             raise HTTPException(status_code=401, detail="Invalid user")
+#         staff_members = (
+#             db.query(Staff)
+#             .join(
+#                 User, User.user_id == Staff.user_id
+#             )
+#             .filter(User.business_id == user.business_id)
+#             .all()
+#         )
 
-        # Fetch staff members linked to the same business
-        staff_members = (
-            db.query(Staff)
-            .join(
-                User, User.user_id == Staff.user_id
-            )  # Ensure staff is linked to a valid user
-            .filter(User.business_id == user.business_id)  # Filter by business ID
-            .all()
-        )
+#         return [
+#             StaffResponses(
+#                 id=staff.id,
+#                 name=staff.name,
+#                 email_id=staff.email_id,
+#                 affiliated_user_id=staff.user_id,
+#                 created_at=staff.created_at,
+#                 modified_at=staff.modified_at,
+#                 staff_status=staff.staff_status,
+#             )
+#             for staff in staff_members
+#         ]
 
-        return [
-            StaffResponses(
-                id=staff.id,
-                name=staff.name,
-                email_id=staff.email_id,
-                affiliated_user_id=staff.user_id,
-                created_at=staff.created_at,
-                modified_at=staff.modified_at,
-                staff_status=staff.staff_status,
-            )
-            for staff in staff_members
-        ]
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving staff: {str(e)}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error retrieving staff: {str(e)}")
