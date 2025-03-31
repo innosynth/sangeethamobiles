@@ -8,6 +8,7 @@ from backend.Store.StoreSchema import (
     StoreUpdateSchema,
     StoreUpdateResponse,
 )
+from typing import List
 from backend.Area.AreaModel import L1
 from backend.db.db import get_session
 from typing_extensions import Annotated
@@ -51,8 +52,9 @@ async def create_store(
     )
 
 
-@router.get("/get-all-stores", response_model=list[StoreSummary])
-@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
+
+@router.get("/get-all-stores", response_model=List[StoreSummary])
+# @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 async def read_stores(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),

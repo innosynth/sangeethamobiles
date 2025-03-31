@@ -52,7 +52,7 @@ def upload_recording(
 
 
 @router.get("/get-recordings", response_model=list[GetRecording])
-@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
+# @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 def get_recordings(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
