@@ -16,6 +16,7 @@ from backend.Store.StoreModel import L0
 from backend.Area.AreaModel import L1
 from backend.User.UserModel import User
 from backend.AudioProcessing.service import upload_recording as upload_recording_service
+from backend.auth.role_checker import check_role
 
 router = APIRouter()
 settings = TenantSettings()
@@ -51,6 +52,7 @@ def upload_recording(
 
 
 @router.get("/get-recordings", response_model=list[GetRecording])
+@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 def get_recordings(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
@@ -163,6 +165,7 @@ def get_recordings(
 
 
 @router.get("/get-last-recording", response_model=GetRecording)
+@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 def get_last_recording(
     user_id: str = Query(None, description="User ID to fetch the last recording for"),
     db: Session = Depends(get_session),

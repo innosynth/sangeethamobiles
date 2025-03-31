@@ -72,7 +72,6 @@ def extract_users(user_id, user_role, db):
     elif user_role == RoleEnum.L4:
         users = get_l4_users(db, business_id)
 
-
     if not users:
         return []
     users = list(set(users))
