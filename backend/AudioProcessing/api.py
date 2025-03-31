@@ -267,13 +267,21 @@ def get_daily_recording_hours(
                 detail="You don't have permission to access other users' recordings.",
             )
 
-        today = datetime.utcnow()
+        today = datetime.utcnow().date()  # Get just the date part
         if time_period == "week":
+            # Calculate Monday of the current week
             start_date = today - timedelta(days=today.weekday())
+            # If today is Monday, include only today
+            if today.weekday() == 0:
+                end_date = today
+            else:
+                end_date = today
         elif time_period == "month":
             start_date = today.replace(day=1)
+            end_date = today
         elif time_period == "year":
             start_date = today.replace(month=1, day=1)
+            end_date = today
         else:
             raise HTTPException(
                 status_code=400,
@@ -287,27 +295,33 @@ def get_daily_recording_hours(
             )
             .filter(VoiceRecording.user_id == user_id)
             .filter(VoiceRecording.start_time >= start_date)
+            .filter(VoiceRecording.start_time <= end_date + timedelta(days=1))  # Include the entire end date
             .group_by(cast(VoiceRecording.start_time, Date))
+            .order_by("recording_date")  # Ensure chronological order
             .all()
         )
 
         if not daily_hours:
             raise HTTPException(status_code=404, detail="No recordings found")
 
-        return {
+        # Convert seconds to hours and format the response
+        response = {
             "user_id": user_id,
             "time_period": time_period,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
             "daily_recording_hours": {
-                str(record.recording_date): round(record.total_duration / 3600, 2)
+                record.recording_date.isoformat(): round(record.total_duration / 3600, 2)
                 for record in daily_hours
             },
         }
 
+        return response
+
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error fetching daily recording hours: {e}"
+            status_code=500, detail=f"Error fetching daily recording hours: {str(e)}"
         )
-
 
 @router.get("/recordings-insights", response_model=dict)
 def get_recordings_insights(
