@@ -1,7 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from backend.Store.StoreModel import L0
-from backend.Store.StoreSchema import StoreCreate, StoreResponse, StoreSummary, StoreUpdateSchema, StoreUpdateResponse
+from backend.Store.StoreSchema import (
+    StoreCreate,
+    StoreResponse,
+    StoreSummary,
+    StoreUpdateSchema,
+    StoreUpdateResponse,
+)
 from backend.Area.AreaModel import L1
 from backend.db.db import get_session
 from typing_extensions import Annotated
@@ -50,7 +56,7 @@ async def read_stores(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-    
+
     business_id = User.business_id
 
     # Fetch only stores that belong to the user's business
@@ -75,6 +81,7 @@ async def read_stores(
         for store in stores
     ]
 
+
 @router.put("/edit-store/{L0_id}", response_model=StoreUpdateResponse)
 @check_role([RoleEnum.L4])  # Ensuring only L4 users can edit stores
 async def edit_store(
@@ -85,23 +92,32 @@ async def edit_store(
 ):
 
     try:
-        store = db.query(L0).filter(
-            L0.L0_id == L0_id,
-            L0.user_id == token["user_id"]  # Ensuring user can only edit their business stores
-        ).first()
-        
+        store = (
+            db.query(L0)
+            .filter(
+                L0.L0_id == L0_id,
+                L0.user_id
+                == token[
+                    "user_id"
+                ],  # Ensuring user can only edit their business stores
+            )
+            .first()
+        )
+
         if not store:
-            raise HTTPException(status_code=404, detail="Store not found or unauthorized access")
+            raise HTTPException(
+                status_code=404, detail="Store not found or unauthorized access"
+            )
 
         if store_update.L0_code and store_update.L0_code != store.L0_code:
-            existing_store = db.query(L0).filter(
-                L0.L0_code == store_update.L0_code,
-                L0.L0_id != L0_id
-            ).first()
+            existing_store = (
+                db.query(L0)
+                .filter(L0.L0_code == store_update.L0_code, L0.L0_id != L0_id)
+                .first()
+            )
             if existing_store:
                 raise HTTPException(
-                    status_code=400,
-                    detail="Store code already in use by another store"
+                    status_code=400, detail="Store code already in use by another store"
                 )
 
         update_data = store_update.dict(exclude_unset=True)
@@ -112,17 +128,20 @@ async def edit_store(
         return StoreUpdateResponse(
             message="Store updated successfully",
             store_id=store.L0_id,
-            updated_fields=list(update_data.keys())
+            updated_fields=list(update_data.keys()),
         )
     except HTTPException:
         db.rollback()
         raise
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Database error while updating store")
+        raise HTTPException(
+            status_code=500, detail="Database error while updating store"
+        )
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
 
 @router.delete("/delete-store/{L0_id}", response_model=dict)
 @check_role([RoleEnum.L4])
@@ -132,13 +151,22 @@ async def delete_store(
     token: dict = Depends(verify_token),
 ):
     try:
-        store = db.query(L0).filter(
-            L0.L0_id == L0_id,
-            L0.user_id == token["user_id"]  # Ensuring only stores of this user's business can be deleted
-        ).first()
+        store = (
+            db.query(L0)
+            .filter(
+                L0.L0_id == L0_id,
+                L0.user_id
+                == token[
+                    "user_id"
+                ],  # Ensuring only stores of this user's business can be deleted
+            )
+            .first()
+        )
 
         if not store:
-            raise HTTPException(status_code=404, detail="Store not found or unauthorized access")
+            raise HTTPException(
+                status_code=404, detail="Store not found or unauthorized access"
+            )
 
         db.delete(store)
         db.commit()

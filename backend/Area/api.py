@@ -38,6 +38,7 @@ async def create_area(
         modified_at=db_area.modified_at,
     )
 
+
 @router.get("/get-all-areas", response_model=list[AreaSummary])
 @check_role([RoleEnum.L3, RoleEnum.L4])
 async def get_all_areas(

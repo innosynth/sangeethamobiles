@@ -37,6 +37,7 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
+
 @router.post("/create-user", response_model=CreateUserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_session)):
     existing_user = db.query(User).filter(User.email_id == user.email_id).first()
@@ -61,6 +62,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_session)):
     db.refresh(db_user)
 
     return db_user
+
 
 @router.get("/get-all-users", response_model=list[UserResponse])
 def read_users(
@@ -87,19 +89,11 @@ def read_users(
     reports_to_ids = [user.reports_to for user in users if user.reports_to]
 
     # Batch fetch L0 (store names)
-    l0_data = (
-        db.query(L0.user_id, L0.L0_name)
-        .filter(L0.user_id.in_(user_ids))
-        .all()
-    )
+    l0_data = db.query(L0.user_id, L0.L0_name).filter(L0.user_id.in_(user_ids)).all()
     store_map = {l0.user_id: l0.L0_name for l0 in l0_data}
 
     # Batch fetch L1 (area names)
-    l1_data = (
-        db.query(L1.user_id, L1.L1_name)
-        .filter(L1.user_id.in_(user_ids))
-        .all()
-    )
+    l1_data = db.query(L1.user_id, L1.L1_name).filter(L1.user_id.in_(user_ids)).all()
     area_map = {l1.user_id: l1.L1_name for l1 in l1_data}
 
     # Batch fetch manager names using reports_to (email_id mapping)
@@ -132,8 +126,12 @@ def read_users(
         reports_to_name = manager_map.get(user.reports_to, "Unknown")
 
         rec_stats = recording_map.get(user.user_id)
-        recording_hours = round((rec_stats.total_duration or 0) / 3600, 2) if rec_stats else 0
-        listening_hours = round((rec_stats.total_listening or 0) / 3600, 2) if rec_stats else 0
+        recording_hours = (
+            round((rec_stats.total_duration or 0) / 3600, 2) if rec_stats else 0
+        )
+        listening_hours = (
+            round((rec_stats.total_listening or 0) / 3600, 2) if rec_stats else 0
+        )
         recording_count = rec_stats.recording_count if rec_stats else 0
 
         user_data.append(
@@ -159,6 +157,7 @@ def read_users(
 
     return user_data
 
+
 @router.put("/edit-user/{user_id}", response_model=UserUpdateResponse)
 def edit_user(
     user_id: str,
@@ -168,7 +167,7 @@ def edit_user(
 ):
     """
     Update user information (Admin only)
-    
+
     - Only L4 (admin) users can perform this action
     - Validates user exists
     - Checks for duplicate email
@@ -178,7 +177,7 @@ def edit_user(
         token_user_id = token.get("user_id")
         if not token_user_id:
             raise HTTPException(status_code=401, detail="Authentication required")
-        
+
         try:
             user_role = RoleEnum(token.get("role", ""))
         except ValueError:
@@ -187,7 +186,7 @@ def edit_user(
         if user_role != RoleEnum.L4:
             raise HTTPException(
                 status_code=403,
-                detail="Only administrators can modify user information"
+                detail="Only administrators can modify user information",
             )
 
         user = db.query(User).filter(User.user_id == user_id).first()
@@ -195,14 +194,14 @@ def edit_user(
             raise HTTPException(status_code=404, detail="User not found")
 
         if user_update.email_id and user_update.email_id != user.email_id:
-            existing_user = db.query(User).filter(
-                User.email_id == user_update.email_id,
-                User.user_id != user_id
-            ).first()
+            existing_user = (
+                db.query(User)
+                .filter(User.email_id == user_update.email_id, User.user_id != user_id)
+                .first()
+            )
             if existing_user:
                 raise HTTPException(
-                    status_code=400,
-                    detail="Email already in use by another account"
+                    status_code=400, detail="Email already in use by another account"
                 )
 
         update_data = user_update.dict(exclude_unset=True)
@@ -214,7 +213,7 @@ def edit_user(
         return {
             "message": "User updated successfully",
             "user_id": user.user_id,
-            "updated_fields": list(update_data.keys())
+            "updated_fields": list(update_data.keys()),
         }
 
     except HTTPException:
@@ -223,15 +222,12 @@ def edit_user(
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(
-            status_code=500,
-            detail="Database error while updating user"
+            status_code=500, detail="Database error while updating user"
         )
     except Exception as e:
         db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unexpected error: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
 
 @router.delete("/delete-user/{user_id}", response_model=dict)
 def delete_user(
@@ -267,6 +263,7 @@ def delete_user(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
 
+
 @router.post("/add-staff", response_model=StaffResponse)
 def add_staff(
     staff_body: StaffCreate,
@@ -296,6 +293,7 @@ def add_staff(
         staff_status=new_staff.staff_status,
     )
 
+
 @router.get("/get-all-staff", response_model=list[StaffResponses])
 async def get_all_staff(
     db: Session = Depends(get_session),
@@ -310,7 +308,9 @@ async def get_all_staff(
         # Fetch staff members linked to the same business
         staff_members = (
             db.query(Staff)
-            .join(User, User.user_id == Staff.user_id)  # Ensure staff is linked to a valid user
+            .join(
+                User, User.user_id == Staff.user_id
+            )  # Ensure staff is linked to a valid user
             .filter(User.business_id == user.business_id)  # Filter by business ID
             .all()
         )

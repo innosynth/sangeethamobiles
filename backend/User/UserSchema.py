@@ -35,6 +35,7 @@ class CreateUserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class UserResponse(BaseModel):
     user_id: str
     name: str
@@ -68,12 +69,21 @@ class StaffCreate(BaseModel):
     name: str
     email_id: str
 
+
 class UserUpdateSchema(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    email_id: Optional[EmailStr] = None  # Changed from 'email' to 'email_id' (matches User model)
-    user_code: Optional[str] = Field(None, min_length=1, max_length=50)  # Added user_code field
-    user_ph_no: Optional[str] = Field(None, min_length=10, max_length=15)  # Phone number field
-    reports_to: Optional[str] = Field(None, min_length=1, max_length=36)  # Manager's user ID
+    email_id: Optional[EmailStr] = (
+        None  # Changed from 'email' to 'email_id' (matches User model)
+    )
+    user_code: Optional[str] = Field(
+        None, min_length=1, max_length=50
+    )  # Added user_code field
+    user_ph_no: Optional[str] = Field(
+        None, min_length=10, max_length=15
+    )  # Phone number field
+    reports_to: Optional[str] = Field(
+        None, min_length=1, max_length=36
+    )  # Manager's user ID
     role: Optional[RoleEnum] = None  # Changed from 'user_role' to 'role'
     status: Optional[StatusEnum] = None  # Changed from 'user_status' to 'status'
 
@@ -85,6 +95,7 @@ class UserUpdateResponse(BaseModel):
     message: str
     user_id: str
     updated_fields: List[str]
+
 
 class StaffResponses(BaseModel):
     id: str

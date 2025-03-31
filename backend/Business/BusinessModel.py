@@ -10,7 +10,6 @@ def generate_uuid():
     return str(uuid.uuid4())  # Replace this with cuid.cuid() if using CUIDs
 
 
-
 class Business(Base):
     __tablename__ = "business"
 

@@ -13,10 +13,10 @@ def generate_uuid():
 class L1(Base):
     __tablename__ = "L1"
     L1_id = Column(String(36), primary_key=True, default=generate_uuid)
-    L1_name = Column(String(255), nullable=False) # area district / city
-    user_id = Column(String(36), nullable=False) 
+    L1_name = Column(String(255), nullable=False)  # area district / city
+    user_id = Column(String(36), nullable=False)
     status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.ACTIVE)
-    
+
     created_at = Column(DateTime, default=func.current_timestamp(), nullable=True)
     modified_at = Column(
         DateTime,
