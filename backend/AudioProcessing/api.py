@@ -1,7 +1,7 @@
 import os
 import datetime
 from fastapi import APIRouter, UploadFile, File, Form, Query
-from typing import Optional
+from typing import List, Optional
 from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ from backend.schemas.RoleSchema import RoleEnum
 from backend.Store.StoreModel import L0
 from backend.Area.AreaModel import L1
 from backend.User.UserModel import User
-from backend.AudioProcessing.service import upload_recording as upload_recording_service
+from backend.AudioProcessing.service import extract_recordings, upload_recording as upload_recording_service
 from backend.auth.role_checker import check_role
 
 router = APIRouter()
@@ -51,118 +51,59 @@ def upload_recording(
     )
 
 
-@router.get("/get-recordings", response_model=list[GetRecording])
-# @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
-def get_recordings(
+@router.get("/get-recordings", response_model=List[GetRecording])
+async def get_recordings(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ):
+    user_id = token.get("user_id")
+    user_role = token.get("role")
+
+    start_date_obj, end_date_obj = parse_dates(start_date, end_date)
+    
+    recordings = extract_recordings(db, user_id, user_role, start_date_obj, end_date_obj)
+
+    return [
+        GetRecording(
+            recording_id=rec.id,
+            user_id=rec.user_id,
+            store_id=rec.store_id,
+            start_time=rec.start_time,
+            end_time=rec.end_time,
+            call_duration=rec.call_duration,
+            audio_length=rec.audio_length,
+            listening_time=rec.listening_time or 0.0,
+            file_url=rec.file_url,
+            store_name=rec.store_name,
+            store_code=rec.store_code,
+            store_address=rec.store_address,
+            asm_name=rec.asm_name,
+            created_at=rec.created_at,
+            modified_at=rec.modified_at,
+        )
+        for rec in recordings
+    ]
+
+def parse_dates(start_date: Optional[str], end_date: Optional[str]):
     try:
-        user_id = token.get("user_id")
-        user_role = token.get("role")
         if not start_date or not end_date:
             end_date_obj = datetime.utcnow()
             start_date_obj = end_date_obj - timedelta(days=30)
         else:
-            try:
-                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
-                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
 
-                if start_date_obj.date() == end_date_obj.date():
-                    end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
-                )
+            if start_date_obj.date() == end_date_obj.date():
+                end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
         if start_date_obj > end_date_obj:
-            raise HTTPException(
-                status_code=400, detail="Start date must be before end date"
-            )
-
-        recordings_query = db.query(VoiceRecording).filter(
-            VoiceRecording.created_at >= start_date_obj,
-            VoiceRecording.created_at <= end_date_obj,
-        )
-
-        if user_role == RoleEnum.L0:
-            recordings_query = recordings_query.filter(
-                VoiceRecording.user_id == user_id
-            )
-
-        recordings = recordings_query.all()
-
-        if not recordings:
-            raise HTTPException(
-                status_code=404, detail="No recordings found for the given period"
-            )
-
-        store_ids = list({rec.store_id for rec in recordings})
-
-        store_info = (
-            db.query(
-                L0.L0_id.label("store_id"),
-                L0.L0_name.label("store_name"),
-                L0.L0_code.label("store_code"),
-                L0.L0_addr.label("store_address"),
-                User.name.label("asm_name"),
-            )
-            .outerjoin(User, L0.user_id == User.user_id)
-            .filter(L0.L0_id.in_(store_ids))
-            .all()
-        )
-
-        store_data = {
-            store.store_id: {
-                "store_name": store.store_name,
-                "store_code": store.store_code,
-                "store_address": store.store_address,
-                "asm_name": store.asm_name or "Unknown",
-            }
-            for store in store_info
-        }
-
-        result = []
-        for rec in recordings:
-            store = store_data.get(
-                rec.store_id,
-                {
-                    "store_name": "Unknown",
-                    "store_code": "Unknown",
-                    "store_address": "Unknown",
-                    "asm_name": "Unknown",
-                },
-            )
-
-            result.append(
-                GetRecording(
-                    recording_id=rec.id,
-                    user_id=rec.user_id,
-                    store_id=rec.store_id,
-                    start_time=rec.start_time,
-                    end_time=rec.end_time,
-                    call_duration=rec.call_duration,
-                    audio_length=rec.audio_length,
-                    listening_time=rec.listening_time or 0.0,
-                    file_url=rec.file_url,
-                    store_name=store["store_name"],
-                    store_code=store["store_code"],
-                    store_address=store["store_address"],
-                    asm_name=store["asm_name"],
-                    created_at=rec.created_at,
-                    modified_at=rec.modified_at,
-                )
-            )
-
-        return result
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching recordings: {str(e)}"
-        )
-
+            raise HTTPException(status_code=400, detail="Start date must be before end date")
+        
+        return start_date_obj, end_date_obj
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
 @router.get("/get-last-recording", response_model=GetRecording)
 @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
