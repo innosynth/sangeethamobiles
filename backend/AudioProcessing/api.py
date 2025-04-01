@@ -326,6 +326,8 @@ def get_daily_recording_hours(
 @router.get("/recordings-insights", response_model=dict)
 def get_recordings_insights(
     user_id: str = Query(None, description="User ID to fetch insights for"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -354,26 +356,39 @@ def get_recordings_insights(
                 detail="You don't have permission to access other users' recordings.",
             )
 
-        # 🚀 **Always filter by user_id (including L4 users now)**
-        user_filter = VoiceRecording.user_id == user_id
+        # Default date range: Last 30 days if no filters provided
+        try:
+            if not start_date or not end_date:
+                end_date_obj = datetime.utcnow()
+                start_date_obj = end_date_obj - timedelta(days=30)
+            else:
+                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+
+                if start_date_obj.date() == end_date_obj.date():
+                    end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
+
+            if start_date_obj > end_date_obj:
+                raise HTTPException(
+                    status_code=400, detail="Start date must be before end date"
+                )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+        # 🚀 **Filter by user_id and date range**
+        filters = [
+            VoiceRecording.user_id == user_id,
+            VoiceRecording.created_at >= start_date_obj,
+            VoiceRecording.created_at <= end_date_obj,
+        ]
 
         # Fetch Insights
-        total_seconds = (
-            db.query(func.sum(VoiceRecording.call_duration))
-            .filter(user_filter)
-            .scalar()
-        ) or 0
+        total_seconds = db.query(func.sum(VoiceRecording.call_duration)).filter(*filters).scalar() or 0
         total_hours = total_seconds / 3600
 
-        total_recordings = (
-            db.query(func.count(VoiceRecording.id)).filter(user_filter).scalar()
-        ) or 0
+        total_recordings = db.query(func.count(VoiceRecording.id)).filter(*filters).scalar() or 0
 
-        avg_length = (
-            db.query(func.avg(VoiceRecording.call_duration))
-            .filter(user_filter)
-            .scalar()
-        )
+        avg_length = db.query(func.avg(VoiceRecording.call_duration)).filter(*filters).scalar()
         avg_minutes = round(avg_length / 60, 2) if avg_length else 0
 
         hourly_counts = (
@@ -381,27 +396,21 @@ def get_recordings_insights(
                 func.extract("hour", VoiceRecording.start_time).label("hour_of_day"),
                 func.count().label("call_count"),
             )
-            .filter(user_filter)
+            .filter(*filters)
             .group_by(func.extract("hour", VoiceRecording.start_time))
             .order_by(func.count().desc())
             .all()
         )
 
-        peak_hours = {
-            int(record.hour_of_day): record.call_count for record in hourly_counts
-        }
+        peak_hours = {int(record.hour_of_day): record.call_count for record in hourly_counts}
 
         # Total listening time
-        total_listening_seconds = (
-            db.query(func.sum(VoiceRecording.listening_time))
-            .filter(user_filter)
-            .scalar()
-        ) or 0
+        total_listening_seconds = db.query(func.sum(VoiceRecording.listening_time)).filter(*filters).scalar() or 0
         total_listening_hours = total_listening_seconds / 3600
 
         last_listening = (
             db.query(VoiceRecording.last_listening_time)
-            .filter(user_filter)
+            .filter(*filters)
             .order_by(VoiceRecording.last_listening_time.desc())
             .first()
         )
@@ -418,9 +427,7 @@ def get_recordings_insights(
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching recordings insights: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error fetching recordings insights: {e}")
 
 
 @router.put("/update-listening-time", response_model=dict)
