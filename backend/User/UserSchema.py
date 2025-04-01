@@ -63,6 +63,7 @@ class StaffResponse(BaseModel):
     name: str
     email_id: str
     affilated_user_id: str
+    store_id: str
 
 
 class StaffCreate(BaseModel):

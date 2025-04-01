@@ -201,11 +201,14 @@ def add_staff(
     db.commit()
     db.refresh(new_staff)
 
+    store = db.query(L0).filter(L0.user_id == new_staff.user_id).first()
+    store_id = str(store.L0_id) if store else "N/A" 
     return StaffResponse(
         staff_id=new_staff.id,
         name=new_staff.name,
         email_id=new_staff.email_id,
         affilated_user_id=new_staff.user_id,
+        store_id=store_id,
         created_at=new_staff.created_at,
         modified_at=new_staff.modified_at,
         staff_status=new_staff.staff_status,
