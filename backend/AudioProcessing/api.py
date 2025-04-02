@@ -1,6 +1,6 @@
-import os
+import io
 import datetime
-from fastapi import APIRouter, UploadFile, File, Form, Query
+from fastapi import APIRouter, UploadFile,BackgroundTasks, File, Form, Query
 from typing import List, Optional
 from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
@@ -15,8 +15,14 @@ from backend.schemas.RoleSchema import RoleEnum
 from backend.Store.StoreModel import L0
 from backend.Area.AreaModel import L1
 from backend.User.UserModel import User
-from backend.AudioProcessing.service import extract_recordings, upload_recording as upload_recording_service
+from backend.AudioProcessing.service import (
+    extract_recordings,
+    upload_recording as upload_recording_service,
+)
+from backend.Transcription.service import transcribe_audio
 from backend.auth.role_checker import check_role
+from pydub import AudioSegment
+from pydub.utils import mediainfo
 
 router = APIRouter()
 settings = TenantSettings()
@@ -32,6 +38,7 @@ def upload_recording(
     store_id: str = Form(None),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
+    background_tasks: BackgroundTasks,
 ):
 
     user_id = token.get("user_id")
@@ -40,6 +47,15 @@ def upload_recording(
     CallRecoding = upload_recording_service(
         Recording, staff_id, start_time, end_time, CallDuration, store_id, db, token
     )
+    audio_bytes = Recording.file.read()    
+    audio_io = io.BytesIO(audio_bytes)
+    file_format = Recording.filename.split('.')[-1].lower()
+    audio = AudioSegment.from_file(audio_io, format=file_format)
+    Recording.file.seek(0)
+    call_duration = len(audio) / 1000
+    if(call_duration < 3600):
+        background_tasks.add_task(transcribe_audio, Recording, CallRecoding.id, db)
+    
     return RecordingResponse(
         id=CallRecoding.id,
         staff_id=CallRecoding.staff_id,
@@ -63,8 +79,10 @@ async def get_recordings(
     user_role = token.get("role")
 
     start_date_obj, end_date_obj = parse_dates(start_date, end_date)
-    
-    recordings = extract_recordings(db, user_id, user_role, start_date_obj, end_date_obj, store_id)
+
+    recordings = extract_recordings(
+        db, user_id, user_role, start_date_obj, end_date_obj, store_id
+    )
 
     return [
         GetRecording(
@@ -87,6 +105,7 @@ async def get_recordings(
         for rec in recordings
     ]
 
+
 def parse_dates(start_date: Optional[str], end_date: Optional[str]):
     try:
         if not start_date or not end_date:
@@ -101,11 +120,16 @@ def parse_dates(start_date: Optional[str], end_date: Optional[str]):
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
         if start_date_obj > end_date_obj:
-            raise HTTPException(status_code=400, detail="Start date must be before end date")
-        
+            raise HTTPException(
+                status_code=400, detail="Start date must be before end date"
+            )
+
         return start_date_obj, end_date_obj
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        raise HTTPException(
+            status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+        )
+
 
 @router.get("/get-last-recording", response_model=GetRecording)
 @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
@@ -238,7 +262,9 @@ def get_daily_recording_hours(
             )
             .filter(VoiceRecording.user_id == user_id)
             .filter(VoiceRecording.start_time >= start_date)
-            .filter(VoiceRecording.start_time <= end_date + timedelta(days=1))  # Include the entire end date
+            .filter(
+                VoiceRecording.start_time <= end_date + timedelta(days=1)
+            )  # Include the entire end date
             .group_by(cast(VoiceRecording.start_time, Date))
             .order_by("recording_date")  # Ensure chronological order
             .all()
@@ -254,7 +280,9 @@ def get_daily_recording_hours(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "daily_recording_hours": {
-                record.recording_date.isoformat(): round(record.total_duration / 3600, 2)
+                record.recording_date.isoformat(): round(
+                    record.total_duration / 3600, 2
+                )
                 for record in daily_hours
             },
         }
@@ -265,6 +293,7 @@ def get_daily_recording_hours(
         raise HTTPException(
             status_code=500, detail=f"Error fetching daily recording hours: {str(e)}"
         )
+
 
 @router.get("/recordings-insights", response_model=dict)
 def get_recordings_insights(
@@ -316,7 +345,9 @@ def get_recordings_insights(
                     status_code=400, detail="Start date must be before end date"
                 )
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+            raise HTTPException(
+                status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+            )
 
         # 🚀 **Filter by user_id and date range**
         filters = [
@@ -326,12 +357,19 @@ def get_recordings_insights(
         ]
 
         # Fetch Insights
-        total_seconds = db.query(func.sum(VoiceRecording.call_duration)).filter(*filters).scalar() or 0
+        total_seconds = (
+            db.query(func.sum(VoiceRecording.call_duration)).filter(*filters).scalar()
+            or 0
+        )
         total_hours = total_seconds / 3600
 
-        total_recordings = db.query(func.count(VoiceRecording.id)).filter(*filters).scalar() or 0
+        total_recordings = (
+            db.query(func.count(VoiceRecording.id)).filter(*filters).scalar() or 0
+        )
 
-        avg_length = db.query(func.avg(VoiceRecording.call_duration)).filter(*filters).scalar()
+        avg_length = (
+            db.query(func.avg(VoiceRecording.call_duration)).filter(*filters).scalar()
+        )
         avg_minutes = round(avg_length / 60, 2) if avg_length else 0
 
         hourly_counts = (
@@ -345,10 +383,15 @@ def get_recordings_insights(
             .all()
         )
 
-        peak_hours = {int(record.hour_of_day): record.call_count for record in hourly_counts}
+        peak_hours = {
+            int(record.hour_of_day): record.call_count for record in hourly_counts
+        }
 
         # Total listening time
-        total_listening_seconds = db.query(func.sum(VoiceRecording.listening_time)).filter(*filters).scalar() or 0
+        total_listening_seconds = (
+            db.query(func.sum(VoiceRecording.listening_time)).filter(*filters).scalar()
+            or 0
+        )
         total_listening_hours = total_listening_seconds / 3600
 
         last_listening = (
@@ -370,7 +413,9 @@ def get_recordings_insights(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching recordings insights: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching recordings insights: {e}"
+        )
 
 
 @router.put("/update-listening-time", response_model=dict)
