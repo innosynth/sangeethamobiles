@@ -6,6 +6,7 @@ from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException
+from backend.User.service import extract_users
 from backend.db.db import get_session
 from backend.AudioProcessing.schema import RecordingResponse, GetRecording
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
@@ -57,7 +58,7 @@ async def get_recordings(
     token: dict = Depends(verify_token),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    store_id: Optional[str] = None,  # ✅ Added store_id as a filter
+    store_id: Optional[str] = None,
 ):
     user_id = token.get("user_id")
     user_role = token.get("role")
@@ -268,7 +269,7 @@ def get_daily_recording_hours(
 
 @router.get("/recordings-insights", response_model=dict)
 def get_recordings_insights(
-    user_id: str = Query(None, description="User ID to fetch insights for"),
+    user_id: Optional[str] = Query(None, description="User ID to fetch insights for"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_session),
@@ -284,43 +285,27 @@ def get_recordings_insights(
         try:
             user_role = RoleEnum(role_str)
         except ValueError:
-            raise HTTPException(
-                status_code=403, detail="Invalid user role provided in token."
-            )
+            raise HTTPException(status_code=403, detail="Invalid user role provided in token.")
 
-        # If no user_id is provided, use the token’s user_id
-        if user_id is None:
-            user_id = token_user_id
+        start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
-        # L0 users can only see their own insights
-        if user_role == RoleEnum.L0 and user_id != token_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail="You don't have permission to access other users' recordings.",
-            )
+        if user_id:
+            user_reports = extract_users(token_user_id, user_role, db)
+            allowed_user_ids = {user.user_id for user in user_reports}
 
-        # Default date range: Last 30 days if no filters provided
-        try:
-            if not start_date or not end_date:
-                end_date_obj = datetime.utcnow()
-                start_date_obj = end_date_obj - timedelta(days=30)
-            else:
-                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
-                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-
-                if start_date_obj.date() == end_date_obj.date():
-                    end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
-
-            if start_date_obj > end_date_obj:
+            if user_id not in allowed_user_ids:
                 raise HTTPException(
-                    status_code=400, detail="Start date must be before end date"
+                    status_code=403,
+                    detail="You don't have permission to access this user's insights.",
                 )
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
-        # 🚀 **Filter by user_id and date range**
+            user_ids = [user_id]
+        else:
+            user_reports = extract_users(token_user_id, user_role, db)
+            user_ids = [user.user_id for user in user_reports]
+
         filters = [
-            VoiceRecording.user_id == user_id,
+            VoiceRecording.user_id.in_(user_ids),
             VoiceRecording.created_at >= start_date_obj,
             VoiceRecording.created_at <= end_date_obj,
         ]
@@ -360,7 +345,7 @@ def get_recordings_insights(
         last_listening_time = last_listening[0] if last_listening else None
 
         return {
-            "user_id": user_id,
+            "user_id": user_id if user_id else token_user_id,
             "total_recording_hours": round(total_hours, 2),
             "total_recordings": total_recordings,
             "average_recording_length": avg_minutes,
