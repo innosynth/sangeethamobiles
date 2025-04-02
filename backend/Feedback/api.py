@@ -141,6 +141,7 @@ def get_all_feedbacks(
     token: dict = Depends(verify_token),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    store_id: Optional[str] = None,
 ):
     # Authentication check
     user_id = token.get("user_id")
@@ -156,6 +157,7 @@ def get_all_feedbacks(
         else:
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
             if start_date_obj.date() == end_date_obj.date():
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
@@ -167,7 +169,7 @@ def get_all_feedbacks(
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
     # Fetch feedbacks using extracted function
-    feedbacks = extract_feedbacks(db, user_id, role, start_date_obj, end_date_obj)
+    feedbacks = extract_feedbacks(db, user_id, role, start_date_obj, end_date_obj, store_id)
 
     if not feedbacks:
         raise HTTPException(status_code=404, detail="No feedback found for the given period")

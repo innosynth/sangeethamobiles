@@ -66,54 +66,49 @@ def upload_recording(
     return new_call_recording
 
 
-def extract_recordings(db, user_id, user_role, start_date, end_date):
+def extract_recordings(db, user_id, user_role, start_date, end_date, store_id=None):
     users = extract_users(user_id, user_role, db)
-    
-    recordings = []
-    for user in users:
-        user_recordings = db.query(VoiceRecording).filter(
-            VoiceRecording.user_id == user.user_id,
-            VoiceRecording.created_at >= start_date,
-            VoiceRecording.created_at <= end_date,
-        ).all()
-        recordings.extend(user_recordings)
+    user_ids = [user.user_id for user in users]
+    query = db.query(VoiceRecording).filter(
+        VoiceRecording.user_id.in_(user_ids),
+        VoiceRecording.created_at >= start_date,
+        VoiceRecording.created_at <= end_date
+    )
 
-    store_ids = list({rec.store_id for rec in recordings})
-    
-    store_info = (
-        db.query(
+    if store_id:
+        query = query.filter(VoiceRecording.store_id == store_id)
+    recordings = query.all()
+    store_ids = {rec.store_id for rec in recordings if rec.store_id}
+
+    if store_ids:
+        store_info = db.query(
             L0.L0_id.label("store_id"),
             L0.L0_name.label("store_name"),
             L0.L0_code.label("store_code"),
             L0.L0_addr.label("store_address"),
             User.name.label("asm_name"),
-        )
-        .outerjoin(User, L0.user_id == User.user_id)
-        .filter(L0.L0_id.in_(store_ids))
-        .all()
-    )
+        ).outerjoin(User, L0.user_id == User.user_id).filter(L0.L0_id.in_(store_ids)).all()
 
-    store_data = {
-        store.store_id: {
-            "store_name": store.store_name,
-            "store_code": store.store_code,
-            "store_address": store.store_address,
-            "asm_name": store.asm_name or "Unknown",
+        store_data = {
+            store.store_id: {
+                "store_name": store.store_name,
+                "store_code": store.store_code,
+                "store_address": store.store_address,
+                "asm_name": store.asm_name or "Unknown",
+            }
+            for store in store_info
         }
-        for store in store_info
-    }
+    else:
+        store_data = {}
 
     for rec in recordings:
-        store = store_data.get(
-            rec.store_id,
-            {
-                "store_name": "Unknown",
-                "store_code": "Unknown",
-                "store_address": "Unknown",
-                "asm_name": "Unknown",
-            },
-        )
-
+        store = store_data.get(rec.store_id, {
+            "store_name": "Unknown",
+            "store_code": "Unknown",
+            "store_address": "Unknown",
+            "asm_name": "Unknown",
+        })
+        
         rec.store_name = store["store_name"]
         rec.store_code = store["store_code"]
         rec.store_address = store["store_address"]

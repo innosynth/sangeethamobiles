@@ -57,13 +57,14 @@ async def get_recordings(
     token: dict = Depends(verify_token),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    store_id: Optional[str] = None,  # ✅ Added store_id as a filter
 ):
     user_id = token.get("user_id")
     user_role = token.get("role")
 
     start_date_obj, end_date_obj = parse_dates(start_date, end_date)
     
-    recordings = extract_recordings(db, user_id, user_role, start_date_obj, end_date_obj)
+    recordings = extract_recordings(db, user_id, user_role, start_date_obj, end_date_obj, store_id)
 
     return [
         GetRecording(
@@ -94,6 +95,7 @@ def parse_dates(start_date: Optional[str], end_date: Optional[str]):
         else:
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
             if start_date_obj.date() == end_date_obj.date():
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
