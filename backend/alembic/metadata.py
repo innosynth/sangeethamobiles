@@ -6,7 +6,7 @@ from backend.Transcription.TranscriptionModel import Base as TranscriptionBase
 from backend.Store.StoreModel import Base as L0Base
 from backend.Business.BusinessModel import Base as BussinessBase
 from backend.Feedback.FeedbackModel import Base as FeedbackBase
-from backend.sales.SalesModel import Base as L2Base
+from backend.Sales.SalesModel import Base as L2Base
 from backend.State.stateModel import Base as L3Base
 
 target_metadata = [
