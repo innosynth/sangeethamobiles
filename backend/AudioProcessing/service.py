@@ -66,7 +66,7 @@ def upload_recording(
     return new_call_recording
 
 
-def extract_recordings(db, user_id, user_role, start_date, end_date, store_id=None):
+def extract_recordings(db, user_id, user_role, start_date, end_date, store_id):
     users = extract_users(user_id, user_role, db)
     user_ids = [user.user_id for user in users]
     query = db.query(VoiceRecording).filter(
