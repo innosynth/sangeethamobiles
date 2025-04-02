@@ -12,6 +12,7 @@ from typing import Optional
 import json
 from datetime import datetime, timedelta
 from backend.User.UserModel import User
+from backend.Feedback.service import extract_feedbacks
 
 router = APIRouter()
 
@@ -141,80 +142,37 @@ def get_all_feedbacks(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ):
-    try:
-        # Authentication check
-        user_id = token.get("user_id")
-        role = token.get("role")
-        if not user_id or role is None:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+    # Authentication check
+    user_id = token.get("user_id")
+    role = token.get("role")
+    if not user_id or role is None:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
+    # Parse date range
+    try:
         if not start_date or not end_date:
             end_date_obj = datetime.utcnow()
             start_date_obj = end_date_obj - timedelta(days=30)
         else:
-            try:
-                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
-                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
 
-                if start_date_obj.date() == end_date_obj.date():
-                    end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
-                )
+            if start_date_obj.date() == end_date_obj.date():
+                end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
         if start_date_obj > end_date_obj:
-            raise HTTPException(
-                status_code=400, detail="Start date must be before end date"
-            )
+            raise HTTPException(status_code=400, detail="Start date must be before end date")
 
-        query = (
-            db.query(
-                FeedbackModel,
-                Staff.name.label("staff_name"),
-                Staff.email_id.label("staff_email"),
-                VoiceRecording.file_url.label("audio_url"),
-            )
-            .join(Staff, Staff.id == FeedbackModel.created_by)
-            .join(VoiceRecording, VoiceRecording.id == FeedbackModel.audio_id)
-            .filter(
-                FeedbackModel.created_at >= start_date_obj,
-                FeedbackModel.created_at <= end_date_obj,
-            )
-        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
-        if role < 4:
-            query = query.filter(FeedbackModel.user_id == user_id)
+    # Fetch feedbacks using extracted function
+    feedbacks = extract_feedbacks(db, user_id, role, start_date_obj, end_date_obj)
 
-        feedbacks = query.order_by(FeedbackModel.created_at.desc()).all()
-        if not feedbacks:
-            raise HTTPException(
-                status_code=404, detail="No feedback found for the given period"
-            )
+    if not feedbacks:
+        raise HTTPException(status_code=404, detail="No feedback found for the given period")
 
-        return [
-            Feedback(
-                id=feedback.id,
-                user_id=feedback.user_id,
-                staff_id=feedback.created_by,
-                staff_name=staff_name,
-                staff_email=staff_email,
-                feedback=feedback.feedback,
-                number=feedback.number,
-                Billed=feedback.Billed,
-                created_at=feedback.created_at,
-                modified_at=feedback.modified_at,
-                audio_url=audio_url,
-            )
-            for feedback, staff_name, staff_email, audio_url in feedbacks
-        ]
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching feedbacks: {str(e)}"
-        )
+    return feedbacks
 
 
 @router.get("/feedback-rating", response_model=dict)
