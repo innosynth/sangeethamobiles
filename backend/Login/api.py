@@ -38,7 +38,7 @@ def login_user(user_data: LoginSchema, db: Session = Depends(get_session)):
     return {
         "user_id": user.user_id,
         "message": "Login successful",
-        "role" : user.role,
+        "role": user.role,
         "access_token": access_token,
         "token_type": "bearer",
         "last_login": user.last_login.isoformat(),

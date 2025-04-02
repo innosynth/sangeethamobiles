@@ -191,11 +191,15 @@ def add_staff(
     user_id = token.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token or user ID missing")
-    existing_staff = db.query(Staff).filter(Staff.email_id == staff_body.email_id, Staff.user_id == user_id).first()
+    existing_staff = (
+        db.query(Staff)
+        .filter(Staff.email_id == staff_body.email_id, Staff.user_id == user_id)
+        .first()
+    )
     if existing_staff:
         store = db.query(L0).filter(L0.user_id == existing_staff.user_id).first()
         store_id = str(store.L0_id) if store else "N/A"
-        
+
         return StaffResponse(
             staff_id=existing_staff.id,
             name=existing_staff.name,
@@ -205,7 +209,7 @@ def add_staff(
             created_at=existing_staff.created_at,
             modified_at=existing_staff.modified_at,
             staff_status=existing_staff.staff_status,
-        )    
+        )
     new_staff = Staff(
         name=staff_body.name,
         email_id=staff_body.email_id,
@@ -217,7 +221,7 @@ def add_staff(
     db.refresh(new_staff)
 
     store = db.query(L0).filter(L0.user_id == new_staff.user_id).first()
-    store_id = str(store.L0_id) if store else "N/A" 
+    store_id = str(store.L0_id) if store else "N/A"
     return StaffResponse(
         staff_id=new_staff.id,
         name=new_staff.name,
