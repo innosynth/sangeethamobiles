@@ -289,20 +289,28 @@ def get_recordings_insights(
 
         start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
-        if user_id:
-            user_reports = extract_users(token_user_id, user_role, db)
-            allowed_user_ids = {user.user_id for user in user_reports}
-
-            if user_id not in allowed_user_ids:
+        # 🚀 **Fix for L0 Users**
+        if user_role == RoleEnum.L0:
+            user_ids = [token_user_id]  # L0 users can only see their own insights
+            if user_id and user_id != token_user_id:
                 raise HTTPException(
-                    status_code=403,
-                    detail="You don't have permission to access this user's insights.",
+                    status_code=403, detail="L0 users cannot access other users' insights."
                 )
-
-            user_ids = [user_id]
         else:
-            user_reports = extract_users(token_user_id, user_role, db)
-            user_ids = [user.user_id for user in user_reports]
+            if user_id:
+                user_reports = extract_users(token_user_id, user_role, db)
+                allowed_user_ids = {user.user_id for user in user_reports}
+
+                if user_id not in allowed_user_ids:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="You don't have permission to access this user's insights.",
+                    )
+
+                user_ids = [user_id]
+            else:
+                user_reports = extract_users(token_user_id, user_role, db)
+                user_ids = [user.user_id for user in user_reports]
 
         filters = [
             VoiceRecording.user_id.in_(user_ids),
