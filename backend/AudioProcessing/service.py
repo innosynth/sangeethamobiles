@@ -91,9 +91,11 @@ def upload_recording(
 
     return new_call_recording
 
-def extract_recordings(db, user_id, user_role, start_date, end_date, store_id=None):
-    users = extract_users(user_id, user_role, db)
-    user_ids = [user.user_id for user in users]
+def extract_recordings(db, user_id, user_role, start_date, end_date, store_id, user_ids):
+    if user_ids is None:
+        users = extract_users(user_id, user_role, db)
+        user_ids = [user.user_id for user in users]
+
     query = db.query(VoiceRecording).filter(
         VoiceRecording.user_id.in_(user_ids),
         VoiceRecording.created_at >= start_date,
@@ -102,6 +104,7 @@ def extract_recordings(db, user_id, user_role, start_date, end_date, store_id=No
 
     if store_id:
         query = query.filter(VoiceRecording.store_id == store_id)
+
     recordings = query.all()
     store_ids = {rec.store_id for rec in recordings if rec.store_id}
 
@@ -132,15 +135,12 @@ def extract_recordings(db, user_id, user_role, start_date, end_date, store_id=No
         store_data = {}
 
     for rec in recordings:
-        store = store_data.get(
-            rec.store_id,
-            {
-                "store_name": "Unknown",
-                "store_code": "Unknown",
-                "store_address": "Unknown",
-                "asm_name": "Unknown",
-            },
-        )
+        store = store_data.get(rec.store_id, {
+            "store_name": "Unknown",
+            "store_code": "Unknown",
+            "store_address": "Unknown",
+            "asm_name": "Unknown",
+        })
 
         rec.store_name = store["store_name"]
         rec.store_code = store["store_code"]
