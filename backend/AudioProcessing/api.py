@@ -8,14 +8,15 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException
 from backend.User.service import extract_users
 from backend.db.db import get_session
-from backend.AudioProcessing.schema import RecordingResponse, GetRecording
+from backend.AudioProcessing.schema import RecordingResponse, GetRecording, GetLastRecording
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from backend.auth.jwt_handler import verify_token
 from backend.config import TenantSettings
 from backend.sales.SalesModel import L2
+from backend.Area.AreaModel import L1
 from backend.schemas.RoleSchema import RoleEnum
 from backend.Store.StoreModel import L0
-from backend.Area.AreaModel import L1
+from backend.AudioProcessing.schema import TransctriptionStatus
 from backend.User.UserModel import User
 from backend.AudioProcessing.service import (
     extract_recordings,
@@ -23,6 +24,7 @@ from backend.AudioProcessing.service import (
 )
 from backend.Transcription.service import transcribe_audio
 from backend.auth.role_checker import check_role
+from backend.Transcription.TranscriptionModel import Transcription
 # from pydub import AudioSegment
 # from pydub.utils import mediainfo
 
@@ -50,7 +52,6 @@ def upload_recording(
         Recording, staff_id, start_time, end_time, CallDuration, store_id, db, token
     )
 
-    # 🔐 Extract attributes while still attached to the session
     recording_data = {
         "id": CallRecoding.id,
         "staff_id": CallRecoding.staff_id,
@@ -85,7 +86,6 @@ async def get_recordings(
 
     start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
-
     if regional_id:
         if user_role in [RoleEnum.L0, RoleEnum.L1]:
             raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
@@ -110,8 +110,23 @@ async def get_recordings(
         end_date=end_date_obj,
         store_id=store_id,
         user_ids=downline_user_ids
-
     )
+    
+    # Get all recording IDs
+    recording_ids = [rec.id for rec in recordings]
+    
+    # Get transcriptions for these recordings
+    transcriptions = {}
+    if recording_ids:
+        transcription_records = db.query(Transcription).filter(
+            Transcription.audio_id.in_(recording_ids)
+        ).all()
+        
+        for trans in transcription_records:
+            transcriptions[trans.audio_id] = {
+                "id": trans.id,
+                "text": trans.transcription_text
+            }
 
     return [
         GetRecording(
@@ -130,6 +145,9 @@ async def get_recordings(
             asm_name=rec.asm_name,
             created_at=rec.created_at,
             modified_at=rec.modified_at,
+            transcription_status=rec.transcription_status or TransctriptionStatus.pending,
+            transcription_text=transcriptions.get(rec.id, {}).get("text") if rec.id in transcriptions else None,
+            transcription_id=transcriptions.get(rec.id, {}).get("id") if rec.id in transcriptions else None
         )
         for rec in recordings
     ]
@@ -159,8 +177,7 @@ def parse_dates(start_date: Optional[str], end_date: Optional[str]):
             status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
         )
 
-
-@router.get("/get-last-recording", response_model=GetRecording)
+@router.get("/get-last-recording", response_model=GetLastRecording)
 @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 def get_last_recording(
     user_id: str = Query(None, description="User ID to fetch the last recording for"),
@@ -208,7 +225,7 @@ def get_last_recording(
         if not last_recording:
             raise HTTPException(status_code=404, detail="No recordings found")
 
-        return GetRecording(
+        return GetLastRecording(
             recording_id=last_recording.VoiceRecording.id,
             user_id=last_recording.VoiceRecording.user_id,
             start_time=last_recording.VoiceRecording.start_time,
