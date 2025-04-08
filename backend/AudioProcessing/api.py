@@ -12,6 +12,7 @@ from backend.AudioProcessing.schema import RecordingResponse, GetRecording
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from backend.auth.jwt_handler import verify_token
 from backend.config import TenantSettings
+from backend.sales.SalesModel import L2
 from backend.schemas.RoleSchema import RoleEnum
 from backend.Store.StoreModel import L0
 from backend.Area.AreaModel import L1
@@ -59,13 +60,43 @@ async def get_recordings(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     store_id: Optional[str] = None,
+    regional_id: Optional[str] = None,
 ):
     user_id = token.get("user_id")
-    user_role = token.get("role")
+    user_role_str = token.get("role")
+
+    try:
+        user_role = RoleEnum(user_role_str)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid user role.")
 
     start_date_obj, end_date_obj = parse_dates(start_date, end_date)
-    
-    recordings = extract_recordings(db, user_id, user_role, start_date_obj, end_date_obj, store_id)
+
+    if regional_id:
+        if user_role in [RoleEnum.L0, RoleEnum.L1]:
+            raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
+        elif user_role == RoleEnum.L2:
+            l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not l2_region or l2_region.user_id != user_id:
+                raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+            regional_user_id = l2_region.user_id
+        else:
+            l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not l2_region:
+                raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+            regional_user_id = l2_region.user_id
+
+        downline_user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
+    else:
+        downline_user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
+
+    recordings = extract_recordings(
+        db, user_id, user_role,
+        start_date=start_date_obj,
+        end_date=end_date_obj,
+        store_id=store_id,
+        user_ids=downline_user_ids
+    )
 
     return [
         GetRecording(
@@ -272,6 +303,7 @@ def get_recordings_insights(
     user_id: Optional[str] = Query(None, description="User ID to fetch insights for"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    regional_id: Optional[str] = Query(None, description="Regional ID (L2 ID) to filter by"),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -289,28 +321,34 @@ def get_recordings_insights(
 
         start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
-        # 🚀 **Fix for L0 Users**
-        if user_role == RoleEnum.L0:
-            user_ids = [token_user_id]  # L0 users can only see their own insights
-            if user_id and user_id != token_user_id:
-                raise HTTPException(
-                    status_code=403, detail="L0 users cannot access other users' insights."
-                )
-        else:
-            if user_id:
-                user_reports = extract_users(token_user_id, user_role, db)
-                allowed_user_ids = {user.user_id for user in user_reports}
-
-                if user_id not in allowed_user_ids:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="You don't have permission to access this user's insights.",
-                    )
-
-                user_ids = [user_id]
+        if regional_id:
+            if user_role in [RoleEnum.L0, RoleEnum.L1]:
+                raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
+            elif user_role == RoleEnum.L2:
+                l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+                if not l2_region or l2_region.user_id != token_user_id:
+                    raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+                regional_user_id = l2_region.user_id
             else:
-                user_reports = extract_users(token_user_id, user_role, db)
-                user_ids = [user.user_id for user in user_reports]
+                l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+                if not l2_region:
+                    raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+                regional_user_id = l2_region.user_id
+
+            user_reports = extract_users(regional_user_id, RoleEnum.L2, db)
+        else:
+            user_reports = extract_users(token_user_id, user_role, db)
+
+        if user_id:
+            allowed_user_ids = {user.user_id for user in user_reports}
+            if user_id not in allowed_user_ids:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You don't have permission to access this user's insights.",
+                )
+            user_ids = [user_id]
+        else:
+            user_ids = [user.user_id for user in user_reports]
 
         filters = [
             VoiceRecording.user_id.in_(user_ids),

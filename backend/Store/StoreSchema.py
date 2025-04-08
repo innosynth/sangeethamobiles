@@ -45,3 +45,16 @@ class StoreUpdateResponse(BaseModel):
     message: str
     store_id: str
     updated_fields: List[str]
+
+
+class RegionRequest(BaseModel):
+    Region_id: str
+
+
+class RegionResponse(BaseModel):
+    Stores: List[str]
+    Users: List[str]
+    total_recordings: int
+    total_hours: float
+    average_call_duration_minutes: float
+    total_feedbacks: int
