@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, func, Enum
+from sqlalchemy import Column, String, Text, DateTime, func, JSON
 from sqlalchemy.orm import declarative_base, relationship
 from backend.schemas.StatusSchema import StatusEnum
 
@@ -22,3 +22,18 @@ class Transcription(Base):
     modified_at = Column(
         DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
+
+class TranscribeAI(Base):
+    __tablename__ = "transcribe_ai"
+
+    id = Column(String(36), primary_key=True)
+    audio_id = Column(String(36), nullable=False)
+    
+    gender = Column(String(255), default="unknown")
+    language = Column(String(255), default="unknown")
+    emotional_state = Column(JSON, default=[])
+    product_mentions = Column(JSON, default=[])
+    complaints = Column(JSON, default=[])
+    positive_keywords = Column(JSON, default=[])
+    negative_keywords = Column(JSON, default=[])
+    contact_reason = Column(JSON, default=[])
