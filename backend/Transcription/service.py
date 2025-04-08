@@ -14,23 +14,59 @@ REQUEST_TIMEOUT = 1800.0
 MODEL_NAME = "gemini-2.0-flash"
 
 # Prompt for the model
-PROMPT = """
-Translate the given audio into English.
-
-First, transcribe the speech in the original/native language.
-
-Then, provide the English translation.
-
-Maintain speaker diarization: clearly separate and label each speaker (e.g., Speaker 1, Speaker 2).
-
-Note: Ensure accurate transcription and translation with 99.99% accuracy.
-Output format:
-Speaker 1 (Native Language): [Transcription]
-Speaker 1 (English Translation): [Translation]
-Speaker 2 (Native Language): [Transcription]
-Speaker 2 (English Translation): [Translation]
-...
+PROMPT = PROMPT = """
+As a audio analyzer and data manager,you should translate the provided call audio from its native language accurately into English language with speaker diarization. Ensure that every spoken segment is translated fully and verbatim. Clearly label each speaker (e.g., "Staff", "Customer") in the translation output.
+Staff: — for the company representative
+Customer: — for the customer
+In addition to translation, perform a detailed analysis for each speaker and the conversation content. For every Customer segment, extract the following details:
+ 
+Instructions for Analysis:
+1)Perform a detailed analysis considering only the Customer side (excluding Staff) for analysis purposes.
+ 
+For the Translation section:
+1)Provide the complete English translation of the conversation(avoits ).
+2)Maintain the original meaning and context.
+3)Use clear speaker labels: Staff and Customer
+ 
+For the Analysis section:
+1)Consider only the Customer's speech content for the following analysis details:
+ 
+Output Requirements:
+Return the final output in the following structured JSON format:
+{
+  "Translation": [
+    {
+      "speaker": "Staff",
+      "text": "Translated text here"
+    },
+    {
+      "speaker": "Staff",
+      "text": "Translated text here"
+    },
+    {
+      "speaker": "Customer",
+      "text": "Translated text here"
+    }
+  ],
+  "analysis": {
+    "customer_details": {
+      "gender": "male/female/unknown",
+      "language": "Primary language spoken",
+      "emotional_state": ["emotion1", "emotion2"]
+    },
+    "content": {
+      "product_mentions": ["product1", "product2"],
+      "complaints": ["complaint1", "complaint2"],
+      "positive_keywords": ["positive word1", "positive word2"],
+      "negative_keywords": ["negative word1", "negative word2"],
+      "contact_reason": ["reason1", "reason2"],
+      "customer_interest": ["interest1", "interest2"]
+    }
+  }
+}
+ 
 """
+
 
 def upload_audio_file(file_path: str, display_name: str):
     """Uploads an audio file to Google Generative AI."""
@@ -56,7 +92,20 @@ def generate_audio_translation(model, prompt: str, uploaded_file, timeout: float
     except Exception as e:
         print(e)
         return False
-
+def get_ai_transcription(file_path,recording_id):
+    try:
+        uploaded_file = upload_audio_file(file_path, recording_id)
+        model = genai.GenerativeModel(model_name=MODEL_NAME)
+        if(uploaded_file==False):
+            return False
+        # Generate response
+        response = generate_audio_translation(model, PROMPT, uploaded_file, REQUEST_TIMEOUT)
+        if(response==False):
+            return False
+        return response
+    except Exception as e:
+        print(e)
+        return False
 
 def transcribe_audio( recording_id, db):
     recording = (
@@ -72,14 +121,7 @@ def transcribe_audio( recording_id, db):
             with open(unique_filename, "wb") as file:
                 for chunk in response.iter_content(chunk_size=1024):
                     file.write(chunk)
-        uploaded_file = upload_audio_file(unique_filename, recording_id)
-        model = genai.GenerativeModel(model_name=MODEL_NAME)
-        if(uploaded_file==False):
-            recording.transcription_status = TransctriptionStatus.failure
-            db.commit()
-            return False
-        # Generate response
-        response = generate_audio_translation(model, PROMPT, uploaded_file, REQUEST_TIMEOUT)
+        response=get_ai_transcription(unique_filename,recording_id)
         if(response==False):
             recording.transcription_status = TransctriptionStatus.failure
             db.commit()
