@@ -40,24 +40,28 @@ def upload_recording(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-
     user_id = token.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID missing from token")
+
     CallRecoding = upload_recording_service(
         Recording, staff_id, start_time, end_time, CallDuration, store_id, db, token
     )
-    trancription_status = transcribe_audio(Recording, CallRecoding.id, db)
-        
-    return RecordingResponse(
-        id=CallRecoding.id,
-        staff_id=CallRecoding.staff_id,
-        start_time=CallRecoding.start_time,
-        end_time=CallRecoding.end_time,
-        call_duration=CallRecoding.call_duration,
-        audio_length=CallRecoding.audio_length,
-        file_url=CallRecoding.file_url,
-    )
+
+    # 🔐 Extract attributes while still attached to the session
+    recording_data = {
+        "id": CallRecoding.id,
+        "staff_id": CallRecoding.staff_id,
+        "start_time": CallRecoding.start_time,
+        "end_time": CallRecoding.end_time,
+        "call_duration": CallRecoding.call_duration,
+        "audio_length": CallRecoding.audio_length,
+        "file_url": CallRecoding.file_url,
+    }
+
+    transcribe_audio(recording_data["id"], db)
+
+    return RecordingResponse(**recording_data)
 
 
 @router.get("/get-recordings", response_model=List[GetRecording])

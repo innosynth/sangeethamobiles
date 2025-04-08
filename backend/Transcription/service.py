@@ -108,7 +108,7 @@ def transcribe_audio( recording_id, db):
     if not recording:
         return False
     try:
-        unique_filename = f"./temp/{uuid.uuid4()}.mp3"
+        unique_filename = f"./upload_files/{uuid.uuid4()}.mp3"
         response = requests.get(recording.file_url, stream=True)
         if response.status_code == 200:
             with open(unique_filename, "wb") as file:

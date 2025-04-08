@@ -1,8 +1,8 @@
 """Trancribe ai table added
 
-Revision ID: 7eb17be94ddc
+Revision ID: 0c4b7158665c
 Revises: 7942982cce8d
-Create Date: 2025-04-08 19:58:42.594705
+Create Date: 2025-04-08 20:36:11.424530
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '7eb17be94ddc'
+revision: str = '0c4b7158665c'
 down_revision: Union[str, None] = '7942982cce8d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

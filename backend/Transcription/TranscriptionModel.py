@@ -26,7 +26,7 @@ class Transcription(Base):
 class TranscribeAI(Base):
     __tablename__ = "transcribe_ai"
 
-    id = Column(String(36), primary_key=True)
+    id = Column(String(36), primary_key=True, default=generate_uuid)
     audio_id = Column(String(36), nullable=False)
     
     gender = Column(String(255), default="unknown")
