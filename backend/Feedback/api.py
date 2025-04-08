@@ -173,10 +173,15 @@ def get_all_feedbacks(
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
         if start_date_obj > end_date_obj:
-            raise HTTPException(status_code=400, detail="Start date must be before end date")
+            raise HTTPException(
+                status_code=400, detail="Start date must be before end date"
+            )
 
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        raise HTTPException(
+            status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+        )
+
 
     # Regional filtering
     if regional_id:
@@ -208,7 +213,9 @@ def get_all_feedbacks(
     )
 
     if not feedbacks:
-        raise HTTPException(status_code=404, detail="No feedback found for the given period")
+        raise HTTPException(
+            status_code=404, detail="No feedback found for the given period"
+        )
 
     return feedbacks
 

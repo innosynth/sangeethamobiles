@@ -59,7 +59,6 @@ async def create_store(
     )
 
 
-
 @router.get("/get-all-stores", response_model=List[StoreSummary])
 # @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 async def read_stores(

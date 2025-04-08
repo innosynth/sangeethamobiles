@@ -72,24 +72,30 @@ def extract_users(user_id, user_role, db):
         return []
 
     # Remove duplicates and extract user IDs
-    users = list({user.user_id: user for user in users}.values())  
+    users = list({user.user_id: user for user in users}.values())
     user_ids = [user.user_id for user in users]
     reports_to_ids = list(set(user.reports_to for user in users if user.reports_to))
 
     # Batch fetch all necessary data in one go
     store_map = {
         l0.user_id: l0.L0_name
-        for l0 in db.query(L0.user_id, L0.L0_name).filter(L0.user_id.in_(user_ids)).all()
+        for l0 in db.query(L0.user_id, L0.L0_name)
+        .filter(L0.user_id.in_(user_ids))
+        .all()
     }
 
     area_map = {
         l1.user_id: l1.L1_name
-        for l1 in db.query(L1.user_id, L1.L1_name).filter(L1.user_id.in_(user_ids)).all()
+        for l1 in db.query(L1.user_id, L1.L1_name)
+        .filter(L1.user_id.in_(user_ids))
+        .all()
     }
 
     manager_map = {
         m.email_id: m.name
-        for m in db.query(User.email_id, User.name).filter(User.email_id.in_(reports_to_ids)).all()
+        for m in db.query(User.email_id, User.name)
+        .filter(User.email_id.in_(reports_to_ids))
+        .all()
     }
 
     recording_map = {
@@ -121,14 +127,23 @@ def extract_users(user_id, user_role, db):
             created_at=user.created_at,
             modified_at=user.modified_at,
             status=user.status,
-            recording_hours=round((recording_map.get(user.user_id).total_duration or 0) / 3600, 2)
-                if user.user_id in recording_map else 0,
-            recording_count=recording_map.get(user.user_id).recording_count if user.user_id in recording_map else 0,
-            listening_hours=round((recording_map.get(user.user_id).total_listening or 0) / 3600, 2)
-                if user.user_id in recording_map else 0,
+            recording_hours=(
+                round((recording_map.get(user.user_id).total_duration or 0) / 3600, 2)
+                if user.user_id in recording_map
+                else 0
+            ),
+            recording_count=(
+                recording_map.get(user.user_id).recording_count
+                if user.user_id in recording_map
+                else 0
+            ),
+            listening_hours=(
+                round((recording_map.get(user.user_id).total_listening or 0) / 3600, 2)
+                if user.user_id in recording_map
+                else 0
+            ),
         )
         for user in users
     ]
-
 
     return user_data

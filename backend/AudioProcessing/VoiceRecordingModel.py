@@ -1,8 +1,8 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, Float, func, Boolean
+from sqlalchemy import Column, String, Text, DateTime, Float, func, Enum
 from sqlalchemy.orm import declarative_base, relationship
 from backend.schemas.StatusSchema import StatusEnum
-
+from backend.schemas.TranscriptionSchema import TransctriptionStatus
 Base = declarative_base()
 
 
@@ -24,7 +24,7 @@ class VoiceRecording(Base):
     call_duration = Column(Float, nullable=False)
     listening_time = Column(Float, nullable=True)
     last_listening_time = Column(DateTime, nullable=True)
-    transcription_status = Column(Boolean, nullable=False, default=False)
+    transcription_status = Column(Enum(TransctriptionStatus), nullable=False, default=TransctriptionStatus.pending)
     created_at = Column(DateTime, default=func.current_timestamp())
     modified_at = Column(
         DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()

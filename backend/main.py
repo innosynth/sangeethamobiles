@@ -9,6 +9,8 @@ from backend.AudioProcessing.api import router as audio_router
 from backend.Feedback.api import router as feedback_router
 from backend.Dashboard.api import router as dashboard_router
 from backend.Area.api import router as area_router
+from backend.Transcription.api import router as transcription_router
+
 
 app = FastAPI(
     openapi_url="/api/v1/openapi.json",
@@ -33,6 +35,7 @@ app.include_router(audio_router)
 app.include_router(feedback_router)
 app.include_router(dashboard_router)
 app.include_router(area_router)
+app.include_router(transcription_router)
 
 
 # Simple route for basic testing and healthcheck

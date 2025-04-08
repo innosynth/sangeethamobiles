@@ -26,7 +26,7 @@ class TenantSettings(BaseSettings):
     DEBUG: bool
     tz_NY: str
     BASE_UPLOAD_FOLDER: str
-
+    GEMINI_API_KEY: str
     class Config:
         env_file = get_env_file()
         env_file_encoding = "utf-8"
