@@ -21,8 +21,8 @@ from backend.AudioProcessing.service import (
 )
 from backend.Transcription.service import transcribe_audio
 from backend.auth.role_checker import check_role
-from pydub import AudioSegment
-from pydub.utils import mediainfo
+# from pydub import AudioSegment
+# from pydub.utils import mediainfo
 
 router = APIRouter()
 settings = TenantSettings()
@@ -40,31 +40,28 @@ def upload_recording(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-
     user_id = token.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID missing from token")
+
     CallRecoding = upload_recording_service(
         Recording, staff_id, start_time, end_time, CallDuration, store_id, db, token
     )
-    audio_bytes = Recording.file.read()    
-    audio_io = io.BytesIO(audio_bytes)
-    file_format = Recording.filename.split('.')[-1].lower()
-    audio = AudioSegment.from_file(audio_io, format=file_format)
-    Recording.file.seek(0)
-    call_duration = len(audio) / 1000
-    if(call_duration < 3600):
-        background_tasks.add_task(transcribe_audio, Recording, CallRecoding.id, db)
-    
-    return RecordingResponse(
-        id=CallRecoding.id,
-        staff_id=CallRecoding.staff_id,
-        start_time=CallRecoding.start_time,
-        end_time=CallRecoding.end_time,
-        call_duration=CallRecoding.call_duration,
-        audio_length=CallRecoding.audio_length,
-        file_url=CallRecoding.file_url,
-    )
+
+    # 🔐 Extract attributes while still attached to the session
+    recording_data = {
+        "id": CallRecoding.id,
+        "staff_id": CallRecoding.staff_id,
+        "start_time": CallRecoding.start_time,
+        "end_time": CallRecoding.end_time,
+        "call_duration": CallRecoding.call_duration,
+        "audio_length": CallRecoding.audio_length,
+        "file_url": CallRecoding.file_url,
+    }
+
+    transcribe_audio(recording_data["id"], db)
+
+    return RecordingResponse(**recording_data)
 
 
 @router.get("/get-recordings", response_model=List[GetRecording])
