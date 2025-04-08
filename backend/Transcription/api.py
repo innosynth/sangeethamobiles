@@ -17,5 +17,5 @@ def start_transcription(
     )
     if not recording:
         return {"error": "Recording not found"}
-    background_tasks.add_task(transcribe_audio, recording_id, recording, db)
+    background_tasks.add_task(transcribe_audio, recording_id, db)
     return {"message": "Transcription started"}
