@@ -13,6 +13,8 @@ from typing import List, Dict, Any, Optional
 import json
 import os
 from wordcloud import WordCloud
+import boto3
+from botocore.client import Config
 import matplotlib.pyplot as plt
 from collections import Counter
 from backend.User.UserModel import User
@@ -26,9 +28,10 @@ from backend.schemas.RoleSchema import RoleEnum
 from backend.Feedback.FeedbackModel import FeedbackModel
 from datetime import datetime, timedelta
 from backend.User.service import extract_users
+from backend.config import TenantSettings
 
 router = APIRouter()
-
+settings = TenantSettings()
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 POSITIVE_WORD_CLOUD_PATH = os.path.join(STATIC_DIR, "positive_word_cloud.png")
 NEGATIVE_WORD_CLOUD_PATH = os.path.join(STATIC_DIR, "negative_word_cloud.png")
@@ -66,6 +69,37 @@ def generate_word_cloud(words, output_path, title="Word Cloud"):
     
     plt.savefig(output_path)
     plt.close()
+    S3_access_key = settings.S3_ACCESS_KEY
+    S3_access_secret = settings.S3_SECRET_KEY
+    S3_bucket_name = settings.S3_BUCKET_NAME
+    S3_EndPoint = settings.S3_ENDPOINT
+    S3_CDN = settings.S3_CDN
+
+    client_s3 = boto3.client(
+        "s3",
+        endpoint_url=S3_EndPoint,
+        aws_access_key_id=S3_access_key,
+        aws_secret_access_key=S3_access_secret,
+        config=Config(signature_version="s3v4", region_name="auto"),
+    )
+    with open(output_path, "rb") as data:
+        # Ensure pointer is at the beginning
+        data.seek(0)
+
+        current_datetime = datetime.now()
+        formatted_datetime = (
+            current_datetime.strftime("%Y%m%d%H%M%S%f") + "." + "png")
+        
+
+        # Upload to S3
+        client_s3.upload_fileobj(
+            data,
+            S3_bucket_name,
+            f"wordcloud/{formatted_datetime}",
+            ExtraArgs={"ContentType": "image/png"},
+        )
+    url = f"{S3_CDN}/wordcloud/{formatted_datetime}"
+    return url
 
 @router.post("/on-demnad-transcription")
 def start_transcription(
@@ -182,8 +216,8 @@ def get_transcription_analytics(
                 return "No data"
             return ",".join([f"{k}:{round((v / total) * 100)}%" for k, v in counter.most_common(top_n)])
 
-        generate_word_cloud(all_positive_keywords, POSITIVE_WORD_CLOUD_PATH, "Positive Keywords")
-        generate_word_cloud(all_negative_keywords, NEGATIVE_WORD_CLOUD_PATH, "Negative Keywords")
+        PositiveUrl=generate_word_cloud(all_positive_keywords, POSITIVE_WORD_CLOUD_PATH, "Positive Keywords")
+        NegativeUrl=generate_word_cloud(all_negative_keywords, NEGATIVE_WORD_CLOUD_PATH, "Negative Keywords")
 
         # Audience Demographics
         feedback_records = db.query(FeedbackModel).filter(
@@ -220,8 +254,8 @@ def get_transcription_analytics(
             "audience_demographics": audience_str,
             "Primary_contact_reasons": format_percent_string(contact_reason_counter),
             "Category_interest": format_percent_string(contact_reason_counter),
-            "Word_cloud_positive": "positive_word_cloud.png",
-            "Word_cloud_negative": "negative_word_cloud.png",
+            "Word_cloud_positive": PositiveUrl,
+            "Word_cloud_negative": NegativeUrl,
             "Created_at": transcribe_ai_data[0].created_at if transcribe_ai_data else None,
             "Modified_at": transcribe_ai_data[0].modified_at if transcribe_ai_data else None,
         }
