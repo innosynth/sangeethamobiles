@@ -84,59 +84,26 @@ def get_transcription_analytics(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-    """
-    Get transcription analytics data including counts, emotions, products, complaints, etc.
-    """
     try:
         user_id = token.get("user_id")
         role_str = token.get("role")
-        
+
         if not user_id or not role_str:
             raise HTTPException(status_code=401, detail="Unauthorized")
-            
+
         try:
             user_role = RoleEnum(role_str)
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role")
-            
-        current_user = db.query(User).filter(User.user_id == user_id).first()
-        if not current_user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        business_id = current_user.business_id
-        
-        base_query = db.query(VoiceRecording)
-        
-        if user_role == RoleEnum.L4:
-            pass
-        elif user_role == RoleEnum.L3:
-            base_query = (
-                base_query.join(User, VoiceRecording.user_id == User.user_id)
-                .join(L2, User.user_id == L2.user_id)
-                .join(L3, L2.area_id == L3.L3_id)
-                .filter(L3.user_id == user_id)
-            )
-        elif user_role == RoleEnum.L2:
-            base_query = (
-                base_query.join(User, VoiceRecording.user_id == User.user_id)
-                .join(L2, User.user_id == L2.user_id)
-                .filter(L2.user_id == user_id)
-            )
-        elif user_role == RoleEnum.L1:
-            base_query = (
-                base_query.join(User, VoiceRecording.user_id == User.user_id)
-                .join(L1, User.user_id == L1.user_id)
-                .filter(L1.user_id == user_id)
-            )
-        else:
-            base_query = base_query.filter(VoiceRecording.user_id == user_id)
-            
-        recordings = base_query.all()
+
+        # Get all users this user has access to based on role hierarchy
+        accessible_users = extract_users(user_id, user_role, db)
+        user_ids = [u.user_id for u in accessible_users]
+
+        # Fetch relevant voice recordings
+        recordings = db.query(VoiceRecording).filter(VoiceRecording.user_id.in_(user_ids)).all()
         recording_ids = [rec.id for rec in recordings]
-        
-        # total_transcriptions = db.query(Transcription).filter(
-        #     Transcription.audio_id.in_(recording_ids)
-        # ).count()
+
         total_transcriptions = len(recording_ids)
         on_demand_transcriptions = db.query(VoiceRecording).filter(
             VoiceRecording.id.in_(recording_ids),
@@ -154,80 +121,59 @@ def get_transcription_analytics(
             VoiceRecording.id.in_(recording_ids),
             VoiceRecording.transcription_status == TransctriptionStatus.completed
         ).count()
-        
-        transcription_ids = db.query(Transcription.id).filter(
-            Transcription.audio_id.in_(recording_ids)
-        ).all()
-        transcription_ids = [t[0] for t in transcription_ids]
-        
+
+        # Transcribe AI data
         transcribe_ai_data = db.query(TranscribeAI).filter(
             TranscribeAI.audio_id.in_(recording_ids)
         ).all()
-        
-        all_emotions = []
-        for ai in transcribe_ai_data:
-            if ai.emotional_state:
-                all_emotions.extend(ai.emotional_state)
-        
+
+        # Emotions
+        all_emotions = [e for ai in transcribe_ai_data for e in (ai.emotional_state or [])]
         emotion_counter = Counter(all_emotions)
         top_emotions = [emotion for emotion, _ in emotion_counter.most_common(5)]
         top_emotions_str = ",".join(top_emotions) if top_emotions else "No emotions detected"
-        
-        all_products = []
-        for ai in transcribe_ai_data:
-            if ai.product_mentions:
-                all_products.extend(ai.product_mentions)
-        
+
+        # Products
+        all_products = [p for ai in transcribe_ai_data for p in (ai.product_mentions or [])]
         product_counter = Counter(all_products)
         top_products = [product for product, _ in product_counter.most_common(5)]
         top_products_str = ",".join(top_products) if top_products else "No products mentioned"
-        
-        all_complaints = []
-        for ai in transcribe_ai_data:
-            if ai.complaints:
-                all_complaints.extend(ai.complaints)
-        
+
+        # Complaints
+        all_complaints = [c for ai in transcribe_ai_data for c in (ai.complaints or [])]
         complaint_counter = Counter(all_complaints)
-        top_complaints = [complaint for complaint, _ in complaint_counter.most_common(5)]
+        top_complaints = [c for c, _ in complaint_counter.most_common(5)]
         top_complaints_str = ",".join(top_complaints) if top_complaints else "No complaints reported"
-        
-        all_positive_keywords = []
-        all_negative_keywords = []
-        
-        for ai in transcribe_ai_data:
-            if ai.positive_keywords:
-                all_positive_keywords.extend(ai.positive_keywords)
-            if ai.negative_keywords:
-                all_negative_keywords.extend(ai.negative_keywords)
-        
+
+        # Word Clouds
+        all_positive_keywords = [k for ai in transcribe_ai_data for k in (ai.positive_keywords or [])]
+        all_negative_keywords = [k for ai in transcribe_ai_data for k in (ai.negative_keywords or [])]
         generate_word_cloud(all_positive_keywords, POSITIVE_WORD_CLOUD_PATH, "Positive Keywords")
         generate_word_cloud(all_negative_keywords, NEGATIVE_WORD_CLOUD_PATH, "Negative Keywords")
-        
+
+        # Language and Gender
         language_counter = Counter([ai.language for ai in transcribe_ai_data if ai.language and ai.language != "unknown"])
         languages = [lang for lang, _ in language_counter.most_common(4)]
         languages_str = ",".join(languages) if languages else "english"
-        
+
         gender_counter = Counter([ai.gender for ai in transcribe_ai_data if ai.gender and ai.gender != "unknown"])
         total_gender = sum(gender_counter.values())
-        
         if total_gender > 0:
             male_percent = round((gender_counter.get("male", 0) / total_gender) * 100)
             female_percent = round((gender_counter.get("female", 0) / total_gender) * 100)
             gender_str = f"male:{male_percent}%,female:{female_percent}%"
         else:
             gender_str = "male:0%,female:0%"
-        
-        all_contact_reasons = []
-        for ai in transcribe_ai_data:
-            if ai.contact_reason:
-                all_contact_reasons.extend(ai.contact_reason)
-        
+
+        # Contact Reasons
+        all_contact_reasons = [r for ai in transcribe_ai_data for r in (ai.contact_reason or [])]
         contact_reason_counter = Counter(all_contact_reasons)
-        primary_contact_reasons = [reason for reason, _ in contact_reason_counter.most_common(5)]
+        primary_contact_reasons = [r for r, _ in contact_reason_counter.most_common(5)]
         primary_contact_reasons_str = ",".join(primary_contact_reasons) if primary_contact_reasons else "No contact reasons identified"
-        category_interest = list(set(all_contact_reasons))
-        category_interest = category_interest[:5]
+        category_interest = list(set(all_contact_reasons))[:5]
         category_interest_str = ",".join(category_interest) if category_interest else "No categories identified"
+
+        # Feedback Analysis
         feedback_records = db.query(FeedbackModel).filter(
             FeedbackModel.audio_id.in_(recording_ids)
         ).all()
@@ -242,7 +188,8 @@ def get_transcription_analytics(
             audience_demographics_str = f"existing:{existing_percent}%,new:{new_percent}%"
         else:
             audience_demographics_str = "existing:0%,new:0%"
-        response = {
+
+        return {
             "Total_transcriptions": total_transcriptions,
             "On_demand_transcriptions": on_demand_transcriptions,
             "Failed_transcriptions": failed_transcriptions,
@@ -258,12 +205,10 @@ def get_transcription_analytics(
             "audience_demographics": audience_demographics_str,
             "Primary_contact_reasons": primary_contact_reasons_str,
             "Category_interest": category_interest_str,
-            "Created_at": transcribe_ai_data[0].created_at,
-            "Modified_at": transcribe_ai_data[0].modified_at,
+            "Created_at": transcribe_ai_data[0].created_at if transcribe_ai_data else None,
+            "Modified_at": transcribe_ai_data[0].modified_at if transcribe_ai_data else None,
         }
-        
-        return response
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching transcription analytics: {str(e)}")
 
