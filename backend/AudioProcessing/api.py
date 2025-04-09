@@ -61,8 +61,8 @@ def upload_recording(
         "audio_length": CallRecoding.audio_length,
         "file_url": CallRecoding.file_url,
     }
-
-    transcribe_audio(recording_data["id"], db)
+    if(CallRecoding.call_duration > 300):
+        transcribe_audio(recording_data["id"], db)
 
     return RecordingResponse(**recording_data)
 

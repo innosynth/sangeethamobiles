@@ -110,9 +110,12 @@ def start_transcription(
     )
     if not recording:
         return {"error": "Recording not found"}
-    background_tasks.add_task(transcribe_audio, recording_id, db)
-    return {"message": "Transcription started"}
+    print(recording.transcription_status)
+    if recording.transcription_status != TransctriptionStatus.pending:
+        return {"error": "Transcription already in progress or completed"}
 
+    transcribe_audio(recording_id, db)
+    return {"message": "Transcription started"}
 
 @router.get("/get-transcription-analytics")
 @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
