@@ -187,6 +187,7 @@ def get_transcription_analytics(
         product_counter = Counter()
         complaint_counter = Counter()
         contact_reason_counter = Counter()
+        category_interest_counter = Counter()
         language_counter = Counter()
         gender_counter = Counter()
         all_positive_keywords = []
@@ -201,6 +202,8 @@ def get_transcription_analytics(
                 complaint_counter.update(ai.complaints)
             if ai.contact_reason:
                 contact_reason_counter.update(ai.contact_reason)
+            if ai.customer_interest:
+                category_interest_counter.update(ai.customer_interest)
             if ai.language and ai.language != "unknown":
                 language_counter.update([ai.language])
             if ai.gender and ai.gender != "unknown":
@@ -211,10 +214,18 @@ def get_transcription_analytics(
                 all_negative_keywords.extend(ai.negative_keywords)
 
         def format_percent_string(counter: Counter, top_n=5) -> str:
-            total = sum(counter.values())
-            if total == 0:
+            if not counter:
                 return "No data"
-            return ",".join([f"{k}:{round((v / total) * 100)}%" for k, v in counter.most_common(top_n)])
+            top_items = counter.most_common(top_n)
+            total_top = sum(v for _, v in top_items)
+            if total_top == 0:
+                return "No data"
+            percentages = [(k, v / total_top) for k, v in top_items]
+            rounded = [(k, round(p * 100)) for k, p in percentages]
+            diff = 100 - sum(p for _, p in rounded)
+            if diff != 0:
+                rounded[0] = (rounded[0][0], rounded[0][1] + diff)
+            return ",".join([f"{k}:{p}%" for k, p in rounded])
 
         PositiveUrl=generate_word_cloud(all_positive_keywords, POSITIVE_WORD_CLOUD_PATH, "Positive Keywords")
         NegativeUrl=generate_word_cloud(all_negative_keywords, NEGATIVE_WORD_CLOUD_PATH, "Negative Keywords")
@@ -253,7 +264,7 @@ def get_transcription_analytics(
             "gender": gender_str,
             "audience_demographics": audience_str,
             "Primary_contact_reasons": format_percent_string(contact_reason_counter),
-            "Category_interest": format_percent_string(contact_reason_counter),
+            "Category_interest": format_percent_string(category_interest_counter),
             "Word_cloud_positive": PositiveUrl,
             "Word_cloud_negative": NegativeUrl,
             "Created_at": transcribe_ai_data[0].created_at if transcribe_ai_data else None,

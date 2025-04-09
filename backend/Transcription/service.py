@@ -132,7 +132,8 @@ def transcribe_audio( recording_id, db):
             "complaints": content.get("complaints", []),
             "positive_keywords": content.get("positive_keywords", []),
             "negative_keywords": content.get("negative_keywords", []),
-            "contact_reason": content.get("contact_reason", [])
+            "contact_reason": content.get("contact_reason", []),
+            "customer_interest": content.get("customer_interest", [])
         }
         transcribe_ai = TranscribeAI(
             audio_id=recording_id,
@@ -143,7 +144,8 @@ def transcribe_audio( recording_id, db):
             complaints=analysis_summary["complaints"],
             positive_keywords=analysis_summary["positive_keywords"],
             negative_keywords=analysis_summary["negative_keywords"],
-            contact_reason=analysis_summary["contact_reason"]
+            contact_reason=analysis_summary["contact_reason"],
+            customer_interest=analysis_summary["customer_interest"],
         )
         db.add(transcribe_ai)
         db.commit()

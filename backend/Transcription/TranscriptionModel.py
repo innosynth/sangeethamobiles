@@ -34,7 +34,17 @@ class TranscribeAI(Base):
     positive_keywords = Column(JSON, default=[])
     negative_keywords = Column(JSON, default=[])
     contact_reason = Column(JSON, default=[])
+    customer_interest = Column(JSON, default=[])
     created_at = Column(DateTime, default=func.current_timestamp())
     modified_at = Column(
         DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
+
+TranscribeAI._language = TranscribeAI.__table__.c.language
+@property
+def language(self):
+    return self._language
+@language.setter
+def language(self, value):
+    self._language = value.title()
+setattr(TranscribeAI, "language", property(language.fget, language.fset))
