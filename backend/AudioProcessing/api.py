@@ -6,11 +6,13 @@ from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException
+from backend.User.service import extract_users
 from backend.db.db import get_session
 from backend.AudioProcessing.schema import RecordingResponse, GetRecording
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
 from backend.auth.jwt_handler import verify_token
 from backend.config import TenantSettings
+from backend.sales.SalesModel import L2
 from backend.schemas.RoleSchema import RoleEnum
 from backend.Store.StoreModel import L0
 from backend.Area.AreaModel import L1
@@ -40,24 +42,28 @@ def upload_recording(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-
     user_id = token.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID missing from token")
+
     CallRecoding = upload_recording_service(
         Recording, staff_id, start_time, end_time, CallDuration, store_id, db, token
     )
-    trancription_status = transcribe_audio(Recording, CallRecoding.id, db)
-        
-    return RecordingResponse(
-        id=CallRecoding.id,
-        staff_id=CallRecoding.staff_id,
-        start_time=CallRecoding.start_time,
-        end_time=CallRecoding.end_time,
-        call_duration=CallRecoding.call_duration,
-        audio_length=CallRecoding.audio_length,
-        file_url=CallRecoding.file_url,
-    )
+
+    # 🔐 Extract attributes while still attached to the session
+    recording_data = {
+        "id": CallRecoding.id,
+        "staff_id": CallRecoding.staff_id,
+        "start_time": CallRecoding.start_time,
+        "end_time": CallRecoding.end_time,
+        "call_duration": CallRecoding.call_duration,
+        "audio_length": CallRecoding.audio_length,
+        "file_url": CallRecoding.file_url,
+    }
+
+    transcribe_audio(recording_data["id"], db)
+
+    return RecordingResponse(**recording_data)
 
 
 @router.get("/get-recordings", response_model=List[GetRecording])
@@ -66,15 +72,45 @@ async def get_recordings(
     token: dict = Depends(verify_token),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    store_id: Optional[str] = None,  # ✅ Added store_id as a filter
+    store_id: Optional[str] = None,
+    regional_id: Optional[str] = None,
 ):
     user_id = token.get("user_id")
-    user_role = token.get("role")
+    user_role_str = token.get("role")
+
+    try:
+        user_role = RoleEnum(user_role_str)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid user role.")
 
     start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
+
+    if regional_id:
+        if user_role in [RoleEnum.L0, RoleEnum.L1]:
+            raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
+        elif user_role == RoleEnum.L2:
+            l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not l2_region or l2_region.user_id != user_id:
+                raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+            regional_user_id = l2_region.user_id
+        else:
+            l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not l2_region:
+                raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+            regional_user_id = l2_region.user_id
+
+        downline_user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
+    else:
+        downline_user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
+
     recordings = extract_recordings(
-        db, user_id, user_role, start_date_obj, end_date_obj, store_id
+        db, user_id, user_role,
+        start_date=start_date_obj,
+        end_date=end_date_obj,
+        store_id=store_id,
+        user_ids=downline_user_ids
+
     )
 
     return [
@@ -290,9 +326,10 @@ def get_daily_recording_hours(
 
 @router.get("/recordings-insights", response_model=dict)
 def get_recordings_insights(
-    user_id: str = Query(None, description="User ID to fetch insights for"),
+    user_id: Optional[str] = Query(None, description="User ID to fetch insights for"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    regional_id: Optional[str] = Query(None, description="Regional ID (L2 ID) to filter by"),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -306,45 +343,41 @@ def get_recordings_insights(
         try:
             user_role = RoleEnum(role_str)
         except ValueError:
-            raise HTTPException(
-                status_code=403, detail="Invalid user role provided in token."
-            )
+            raise HTTPException(status_code=403, detail="Invalid user role provided in token.")
 
-        # If no user_id is provided, use the token’s user_id
-        if user_id is None:
-            user_id = token_user_id
+        start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
-        # L0 users can only see their own insights
-        if user_role == RoleEnum.L0 and user_id != token_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail="You don't have permission to access other users' recordings.",
-            )
-
-        # Default date range: Last 30 days if no filters provided
-        try:
-            if not start_date or not end_date:
-                end_date_obj = datetime.utcnow()
-                start_date_obj = end_date_obj - timedelta(days=30)
+        if regional_id:
+            if user_role in [RoleEnum.L0, RoleEnum.L1]:
+                raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
+            elif user_role == RoleEnum.L2:
+                l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+                if not l2_region or l2_region.user_id != token_user_id:
+                    raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+                regional_user_id = l2_region.user_id
             else:
-                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
-                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+                l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
+                if not l2_region:
+                    raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+                regional_user_id = l2_region.user_id
 
-                if start_date_obj.date() == end_date_obj.date():
-                    end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
+            user_reports = extract_users(regional_user_id, RoleEnum.L2, db)
+        else:
+            user_reports = extract_users(token_user_id, user_role, db)
 
-            if start_date_obj > end_date_obj:
+        if user_id:
+            allowed_user_ids = {user.user_id for user in user_reports}
+            if user_id not in allowed_user_ids:
                 raise HTTPException(
-                    status_code=400, detail="Start date must be before end date"
+                    status_code=403,
+                    detail="You don't have permission to access this user's insights.",
                 )
-        except ValueError:
-            raise HTTPException(
-                status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
-            )
+            user_ids = [user_id]
+        else:
+            user_ids = [user.user_id for user in user_reports]
 
-        # 🚀 **Filter by user_id and date range**
         filters = [
-            VoiceRecording.user_id == user_id,
+            VoiceRecording.user_id.in_(user_ids),
             VoiceRecording.created_at >= start_date_obj,
             VoiceRecording.created_at <= end_date_obj,
         ]
@@ -396,7 +429,7 @@ def get_recordings_insights(
         last_listening_time = last_listening[0] if last_listening else None
 
         return {
-            "user_id": user_id,
+            "user_id": user_id if user_id else token_user_id,
             "total_recording_hours": round(total_hours, 2),
             "total_recordings": total_recordings,
             "average_recording_length": avg_minutes,

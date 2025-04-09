@@ -1,5 +1,5 @@
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
-from backend.Transcription.TranscriptionModel import Transcription
+from backend.Transcription.TranscriptionModel import Transcription, TranscribeAI
 from backend.schemas.TranscriptionSchema import TransctriptionStatus 
 import os
 import google.generativeai as genai
@@ -9,23 +9,26 @@ import uuid,requests,json
 load_dotenv()
 GeminiKey= os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GeminiKey)
-# Constants
 REQUEST_TIMEOUT = 1800.0
 MODEL_NAME = "gemini-2.0-flash"
 
 # Prompt for the model
-PROMPT = """Process the provided call audio as follows:
+PROMPT = PROMPT = """
+As a audio analyzer and data manager,you should translate the provided call audio from its native language accurately into English language with speaker diarization. Ensure that every spoken segment is translated fully and verbatim. Clearly label each speaker (e.g., "Staff", "Customer") in the translation output.
+Staff: — for the company representative
+Customer: — for the customer
+In addition to translation, perform a detailed analysis for each speaker and the conversation content. For every Customer segment, extract the following details:
  
-1. TRANSLATION:
-   - Translate all speech from any source language into English
-   - Provide speaker diarization with clear labels:
-     * Staff: — for the company representative
-     * Customer: — for the customer
-   - Ensure complete and accurate translation of the entire conversation
+Instructions for Analysis:
+1)Perform a detailed analysis considering only the Customer side (excluding Staff) for analysis purposes.
  
-2. ANALYSIS:
-   - Focus analysis ONLY on the Customer's speech content
-   - Do not analyze the Staff's contributions
+For the Translation section:
+1)Provide the complete English translation of the conversation(avoits ).
+2)Maintain the original meaning and context.
+3)Use clear speaker labels: Staff and Customer
+ 
+For the Analysis section:
+1)Consider only the Customer's speech content for the following analysis details:
  
 Output the results in this exact JSON format:
 {
@@ -106,11 +109,11 @@ def transcribe_audio( recording_id, db):
     recording = (
         db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
     )
-    print(recording.file_url)
+    # print(recording.file_url)
     if not recording:
         return False
     try:
-        unique_filename = f"./temp/{uuid.uuid4()}.mp3"
+        unique_filename = f"./upload_files/{uuid.uuid4()}.mp3"
         response = requests.get(recording.file_url, stream=True)
         if response.status_code == 200:
             with open(unique_filename, "wb") as file:
@@ -122,9 +125,7 @@ def transcribe_audio( recording_id, db):
             recording.transcription_status = TransctriptionStatus.failure
             db.commit()
             return False
-        print(response)
-        transcription_text = json.dumps(response["Translation"])
-        
+        transcription_text = response.text
         transcription = Transcription(
             audio_id=recording_id, transcription_text=transcription_text
         )
