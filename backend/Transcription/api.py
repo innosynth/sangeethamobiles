@@ -257,7 +257,9 @@ def get_transcription_analytics(
             "gender": gender_str,
             "audience_demographics": audience_demographics_str,
             "Primary_contact_reasons": primary_contact_reasons_str,
-            "Category_interest": category_interest_str
+            "Category_interest": category_interest_str,
+            "Created_at": transcribe_ai_data.created_at,
+            "Modified_at": transcribe_ai_data.modified_at,
         }
         
         return response

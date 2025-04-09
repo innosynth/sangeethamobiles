@@ -36,4 +36,7 @@ class TranscribeAI(Base):
     complaints = Column(JSON, default=[])
     positive_keywords = Column(JSON, default=[])
     negative_keywords = Column(JSON, default=[])
-    contact_reason = Column(JSON, default=[])
+    created_at = Column(DateTime, default=func.current_timestamp())
+    modified_at = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
