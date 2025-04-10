@@ -102,20 +102,50 @@ def generate_word_cloud(words, output_path, title="Word Cloud"):
     return url
 
 @router.post("/on-demnad-transcription")
+@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 def start_transcription(
-    recording_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_session)
+    recording_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
 ):
-    recording = (
-        db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
-    )
+    user_id = token.get("user_id")
+    role_str = token.get("role")
+
+    try:
+        user_role = RoleEnum(role_str)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid user role")
+
+    recording = db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
     if not recording:
-        return {"error": "Recording not found"}
-    print(recording.transcription_status)
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    # Get all allowed user_ids for the current user based on hierarchy
+    allowed_users = [u.user_id for u in extract_users(user_id, user_role, db)]
+
+    # Add self to allowed list
+    allowed_users.append(user_id)
+
+    # If the recording doesn't belong to allowed hierarchy, block it
+    if recording.user_id not in allowed_users:
+        raise HTTPException(status_code=403, detail="You are not authorized to transcribe this recording")
+
     if recording.transcription_status != TransctriptionStatus.pending:
         return {"error": "Transcription already in progress or completed"}
 
     transcribe_audio(recording_id, db)
-    return {"message": "Transcription started"}
+
+    # Fetch transcription_id created in TranscribeAI for the recording
+    transcribe_record = db.query(TranscribeAI).filter(TranscribeAI.audio_id == recording_id).first()
+
+    if not transcribe_record:
+        return {"error": "Transcription failed or not recorded"}
+
+    return {
+        "Status": "transcription started successfully",
+        "Transcription_id": str(transcribe_record.id)
+    }
 
 @router.get("/get-transcription-analytics")
 @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
@@ -168,7 +198,8 @@ def get_transcription_analytics(
         # Transcription stats
         on_demand_transcriptions = db.query(VoiceRecording).filter(
             VoiceRecording.id.in_(recording_ids),
-            VoiceRecording.transcription_status == TransctriptionStatus.completed
+            VoiceRecording.transcription_status == TransctriptionStatus.completed,
+            VoiceRecording.call_duration < 300
         ).count()
         failed_transcriptions = db.query(VoiceRecording).filter(
             VoiceRecording.id.in_(recording_ids),
@@ -178,7 +209,10 @@ def get_transcription_analytics(
             VoiceRecording.id.in_(recording_ids),
             VoiceRecording.transcription_status == TransctriptionStatus.pending
         ).count()
-        finished_transcriptions = on_demand_transcriptions
+        finished_transcriptions = db.query(VoiceRecording).filter(
+            VoiceRecording.id.in_(recording_ids),
+            VoiceRecording.transcription_status == TransctriptionStatus.completed
+        ).count()
 
         # TranscribeAI data
         transcribe_ai_data = db.query(TranscribeAI).filter(
@@ -216,19 +250,22 @@ def get_transcription_analytics(
             if ai.negative_keywords:
                 all_negative_keywords.extend(ai.negative_keywords)
 
-        def format_percent_string(counter: Counter, top_n=5) -> str:
+        def format_percent_object(counter: Counter, top_n=5) -> dict:
             if not counter:
-                return "No data"
+                return {}
             top_items = counter.most_common(top_n)
             total_top = sum(v for _, v in top_items)
             if total_top == 0:
-                return "No data"
-            percentages = [(k, v / total_top) for k, v in top_items]
-            rounded = [(k, round(p * 100)) for k, p in percentages]
-            diff = 100 - sum(p for _, p in rounded)
-            if diff != 0:
-                rounded[0] = (rounded[0][0], rounded[0][1] + diff)
-            return ",".join([f"{k}:{p}%" for k, p in rounded])
+                return {}
+            percentages = [(k, v, round((v / total_top) * 100)) for k, v in top_items]
+            percentage_sum = sum(p for _, _, p in percentages)
+            diff = 100 - percentage_sum
+            if diff != 0 and percentages:
+                name, count, perc = percentages[0]
+                percentages[0] = (name, count, perc + diff)
+
+            return {k: {"count": v, "percentage": p} for k, v, p in percentages}
+
 
         PositiveUrl=generate_word_cloud(all_positive_keywords, POSITIVE_WORD_CLOUD_PATH, "Positive Keywords")
         NegativeUrl=generate_word_cloud(all_negative_keywords, NEGATIVE_WORD_CLOUD_PATH, "Negative Keywords")
@@ -260,14 +297,14 @@ def get_transcription_analytics(
             "Failed_transcriptions": failed_transcriptions,
             "Pending_transcriptions": pending_transcriptions,
             "Finished_transcriptions": finished_transcriptions,
-            "Top_emotions": format_percent_string(emotion_counter),
-            "Top_products": format_percent_string(product_counter),
-            "Top_complaints": format_percent_string(complaint_counter),
-            "Languages": format_percent_string(language_counter),
+            "Top_emotions": format_percent_object(emotion_counter),
+            "Top_products": format_percent_object(product_counter),
+            "Top_complaints": format_percent_object(complaint_counter),
+            "Languages": format_percent_object(language_counter),
             "gender": gender_str,
             "audience_demographics": audience_str,
-            "Primary_contact_reasons": format_percent_string(contact_reason_counter),
-            "Category_interest": format_percent_string(category_interest_counter),
+            "Primary_contact_reasons": format_percent_object(contact_reason_counter),
+            "Category_interest": format_percent_object(category_interest_counter),
             "Word_cloud_positive": PositiveUrl,
             "Word_cloud_negative": NegativeUrl,
             "Created_at": transcribe_ai_data[0].created_at if transcribe_ai_data else None,
