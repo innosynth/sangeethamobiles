@@ -71,7 +71,18 @@ def upload_audio_file(file_path: str, display_name: str):
         print("Error in Uploading",e)
         print(e)
         return False
-    
+
+def lowercase_values(data):
+    """Recursively converts string values in a dictionary or list to lowercase."""
+    if isinstance(data, dict):
+        return {k: lowercase_values(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [lowercase_values(item) for item in data]
+    elif isinstance(data, str):
+        return data.lower()
+    else:
+        return data
+
 def generate_audio_translation(model, prompt: str, uploaded_file, timeout: float):
     """Generates translation and transcription from the uploaded audio file."""
     print("Sending prompt to the model...")
@@ -98,7 +109,15 @@ def get_ai_transcription(file_path,recording_id):
         if(response==False):
             return False
         
-        return json.loads(response.text)
+        # Parse JSON and lowercase values
+        try:
+            response_json = json.loads(response.text)
+            lowercased_response = lowercase_values(response_json)
+            return lowercased_response
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON: {e}")
+            return False
+        
     except Exception as e:
         print("Error in AI",e)
         print(e)
@@ -140,6 +159,7 @@ def transcribe_audio( recording_id, db):
             "contact_reason": content.get("contact_reason", []),
             "customer_interest": content.get("customer_interest", [])
         }
+        print(analysis_summary)
         transcribe_ai = TranscribeAI(
             audio_id=recording_id,
             gender=analysis_summary["gender"],
