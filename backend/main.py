@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from backend.Business.api import router as business_router
+from backend.sales.api import router as region_router
 from backend.Store.api import router as store_router
 from backend.Login.api import router as login_router
 from backend.User.api import router as user_router
@@ -28,6 +29,7 @@ app.add_middleware(
 
 
 app.include_router(business_router)
+app.include_router(region_router)
 app.include_router(store_router)
 app.include_router(login_router)
 app.include_router(user_router)
