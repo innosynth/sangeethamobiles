@@ -14,8 +14,8 @@ from backend.User.UserModel import User
 
 settings = TenantSettings()
 
-from pydub import AudioSegment
-from pydub.utils import mediainfo
+# from pydub import AudioSegment
+# from pydub.utils import mediainfo
 
 
 def upload_recording(
