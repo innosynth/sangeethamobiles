@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from backend.AudioProcessing.api import parse_dates
+from backend.User.service import extract_users
 from backend.auth.jwt_handler import verify_token
 from backend.db.db import get_session
 from backend.Feedback.FeedbackModel import FeedbackModel
@@ -13,6 +15,8 @@ import json
 from datetime import datetime, timedelta
 from backend.User.UserModel import User
 from backend.Feedback.service import extract_feedbacks
+from backend.sales.SalesModel import L2
+from backend.schemas.RoleSchema import RoleEnum
 
 router = APIRouter()
 
@@ -142,12 +146,18 @@ def get_all_feedbacks(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     store_id: Optional[str] = None,
+    regional_id: Optional[str] = None,
 ):
     # Authentication check
     user_id = token.get("user_id")
-    role = token.get("role")
-    if not user_id or role is None:
+    role_str = token.get("role")
+    if not user_id or role_str is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        user_role = RoleEnum(role_str)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid user role.")
 
     # Parse date range
     try:
@@ -172,9 +182,34 @@ def get_all_feedbacks(
             status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
         )
 
-    # Fetch feedbacks using extracted function
+
+    # Regional filtering
+    if regional_id:
+        if user_role in [RoleEnum.L0, RoleEnum.L1]:
+            raise HTTPException(status_code=403, detail="L0 and L1 users cannot use regional filter.")
+        elif user_role == RoleEnum.L2:
+            region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not region or region.user_id != user_id:
+                raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+            regional_user_id = region.user_id
+        else:
+            region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not region:
+                raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+            regional_user_id = region.user_id
+
+        user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
+    else:
+        user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
+
     feedbacks = extract_feedbacks(
-        db, user_id, role, start_date_obj, end_date_obj, store_id
+        db=db,
+        user_id=None,
+        role=None,
+        start_date=start_date_obj,
+        end_date=end_date_obj,
+        store_id=store_id,
+        user_ids=user_ids,
     )
 
     if not feedbacks:
@@ -187,29 +222,70 @@ def get_all_feedbacks(
 
 @router.get("/feedback-rating", response_model=dict)
 def get_feedback_rating(
-    db: Session = Depends(get_session), token: dict = Depends(verify_token)
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+    store_id: Optional[str] = None,
+    regional_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ):
     user_id = token.get("user_id")
-    role = token.get("role")  # Extract role from the token
+    role_str = token.get("role")
 
-    if not user_id or role is None:
+    if not user_id or role_str is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Query voice recordings based on role
-    if role == 4:
-        voice_recordings = db.query(VoiceRecording).all()  # Fetch all voice recordings
+    try:
+        user_role = RoleEnum(role_str)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid role")
+
+    if regional_id:
+        if user_role in [RoleEnum.L0, RoleEnum.L1]:
+            raise HTTPException(status_code=403, detail="Access to regional data denied for your role.")
+        elif user_role == RoleEnum.L2:
+            l2 = db.query(L2).filter(L2.user_id == user_id, L2.L2_id == regional_id).first()
+            if not l2:
+                raise HTTPException(status_code=403, detail="You can only access your own regional data.")
+            regional_user_id = l2.user_id
+        else:  # L3 and L4 can access any region
+            l2 = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not l2:
+                raise HTTPException(status_code=404, detail="Invalid regional_id provided.")
+            regional_user_id = l2.user_id
+
+        users = extract_users(regional_user_id, user_role, db)
+        user_ids = [u.user_id for u in users]
     else:
-        voice_recordings = (
-            db.query(VoiceRecording).filter(VoiceRecording.user_id == user_id).all()
-        )
+        users = extract_users(user_id, user_role, db)
+        user_ids = [u.user_id for u in users]
+
+    start_date_obj, end_date_obj = parse_dates(start_date, end_date)
+
+    query = db.query(VoiceRecording).filter(
+        VoiceRecording.user_id.in_(user_ids),
+        VoiceRecording.created_at >= start_date_obj,
+        VoiceRecording.created_at <= end_date_obj,
+    )
+
+    if store_id:
+        query = query.filter(VoiceRecording.store_id == store_id)
+
+    voice_recordings = query.all()
 
     if not voice_recordings:
         raise HTTPException(status_code=404, detail="No voice recordings found")
 
-    audio_ids = [record.id for record in voice_recordings]
+    audio_ids = [rec.id for rec in voice_recordings]
 
     feedbacks = (
-        db.query(FeedbackModel).filter(FeedbackModel.audio_id.in_(audio_ids)).all()
+        db.query(FeedbackModel)
+        .filter(
+            FeedbackModel.audio_id.in_(audio_ids),
+            FeedbackModel.created_at >= start_date_obj,
+            FeedbackModel.created_at <= end_date_obj,
+        )
+        .all()
     )
 
     total_feedbacks = len(feedbacks)
@@ -219,21 +295,19 @@ def get_feedback_rating(
 
     for feedback in feedbacks:
         try:
-            feedback_data = json.loads(feedback.feedback)  # Convert JSON feedback
+            feedback_data = json.loads(feedback.feedback)
             call_rating = feedback_data.get("callRating", "").lower()
-            # Categorize callRating
             if call_rating == "good":
                 positive_feedbacks += 1
             elif call_rating == "bad":
                 negative_feedbacks += 1
             elif call_rating == "average":
                 average_feedbacks += 1
-
         except json.JSONDecodeError:
-            continue  # Skip invalid JSON feedback entries
+            continue
 
     return {
-        "user_id": user_id if role < 4 else "Super Admin",
+        "user_id": user_id if user_role != RoleEnum.L3 else "Super Admin",
         "total_feedbacks": total_feedbacks,
         "positive_feedbacks": positive_feedbacks,
         "negative_feedbacks": negative_feedbacks,

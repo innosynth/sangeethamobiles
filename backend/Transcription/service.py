@@ -1,5 +1,5 @@
 from backend.AudioProcessing.VoiceRecordingModel import VoiceRecording
-from backend.Transcription.TranscriptionModel import Transcription
+from backend.Transcription.TranscriptionModel import Transcription, TranscribeAI
 from backend.schemas.TranscriptionSchema import TransctriptionStatus 
 import os
 import google.generativeai as genai
@@ -9,11 +9,9 @@ import uuid,requests,json
 load_dotenv()
 GeminiKey= os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GeminiKey)
-# Constants
 REQUEST_TIMEOUT = 1800.0
 MODEL_NAME = "gemini-2.0-flash"
 
-# Prompt for the model
 PROMPT = """Process the provided call audio as follows:
  
 1. TRANSLATION:
@@ -106,11 +104,11 @@ def transcribe_audio( recording_id, db):
     recording = (
         db.query(VoiceRecording).filter(VoiceRecording.id == recording_id).first()
     )
-    print(recording.file_url)
+    # print(recording.file_url)
     if not recording:
         return False
     try:
-        unique_filename = f"./temp/{uuid.uuid4()}.mp3"
+        unique_filename = f"./upload_files/{uuid.uuid4()}.mp3"
         response = requests.get(recording.file_url, stream=True)
         if response.status_code == 200:
             with open(unique_filename, "wb") as file:
@@ -122,9 +120,34 @@ def transcribe_audio( recording_id, db):
             recording.transcription_status = TransctriptionStatus.failure
             db.commit()
             return False
-        print(response)
         transcription_text = json.dumps(response["Translation"])
-        
+        analysis = response.get("analysis", {})
+        customer_details = analysis.get("customer_details", {})
+        content = analysis.get("content", {})
+
+        analysis_summary = {
+            "gender": customer_details.get("gender", "unknown"),
+            "language": customer_details.get("language", "unknown"),
+            "emotional_state": customer_details.get("emotional_state", []),
+            "product_mentions": content.get("product_mentions", []),
+            "complaints": content.get("complaints", []),
+            "positive_keywords": content.get("positive_keywords", []),
+            "negative_keywords": content.get("negative_keywords", []),
+            "contact_reason": content.get("contact_reason", [])
+        }
+        transcribe_ai = TranscribeAI(
+            audio_id=recording_id,
+            gender=analysis_summary["gender"],
+            language=analysis_summary["language"],
+            emotional_state=analysis_summary["emotional_state"],
+            product_mentions=analysis_summary["product_mentions"],
+            complaints=analysis_summary["complaints"],
+            positive_keywords=analysis_summary["positive_keywords"],
+            negative_keywords=analysis_summary["negative_keywords"],
+            contact_reason=analysis_summary["contact_reason"]
+        )
+        db.add(transcribe_ai)
+        db.commit()
         transcription = Transcription(
             audio_id=recording_id, transcription_text=transcription_text
         )

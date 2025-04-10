@@ -5,9 +5,10 @@ from backend.User.UserModel import Staff
 from backend.User.service import extract_users
 
 
-def extract_feedbacks(db, user_id, role, start_date, end_date, store_id=None):
-    users = extract_users(user_id, role, db)  # Role-based filtering
-    user_ids = [user.user_id for user in users]  # Extract user IDs efficiently
+def extract_feedbacks(db, user_id, role, start_date, end_date, store_id=None, user_ids=None):
+    if user_ids is None:
+        users = extract_users(user_id, role, db)
+        user_ids = [user.user_id for user in users]
 
     # Build base query
     query = (
@@ -27,7 +28,7 @@ def extract_feedbacks(db, user_id, role, start_date, end_date, store_id=None):
         .order_by(FeedbackModel.created_at.desc())
     )
 
-    if store_id:  # ✅ Apply store filter via VoiceRecording table
+    if store_id:
         query = query.filter(VoiceRecording.store_id == store_id)
 
     feedbacks = query.all()
