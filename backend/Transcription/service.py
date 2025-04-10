@@ -12,7 +12,8 @@ genai.configure(api_key=GeminiKey)
 REQUEST_TIMEOUT = 1800.0
 MODEL_NAME = "gemini-2.0-flash"
 
-PROMPT = """Process the provided call audio as follows:
+PROMPT = """
+Process the provided call audio as follows:
  
 1. TRANSLATION:
    - Translate all speech from any source language into English
@@ -41,7 +42,8 @@ Output the results in this exact JSON format:
   "analysis": {
     "customer_details": {
       "gender": "male/female/unknown",
-      "language": "Primary language spoken originally",
+      "language_theory": "Analyze the provided audio clip and identify all languages spoken within it. Please list the languages detected and, if possible, provide an approximate percentage of the time each language is spoken. Provide a brief summary of what was spoken by who."
+      "language":"Choose the highest percentage language from {language_theory}"
       "emotional_state": ["emotion1", "emotion2"]
     },
     "content": {
@@ -53,7 +55,9 @@ Output the results in this exact JSON format:
       "customer_interest": ["interest1", "interest2"]
     }
   }
-}"""
+}
+ 
+"""
 
 
 def upload_audio_file(file_path: str, display_name: str):
@@ -115,6 +119,7 @@ def transcribe_audio( recording_id, db):
                 for chunk in response.iter_content(chunk_size=1024):
                     file.write(chunk)
         response=get_ai_transcription(unique_filename,recording_id)
+        
         if(response==False):
             recording.transcription_status = TransctriptionStatus.failure
             db.commit()
