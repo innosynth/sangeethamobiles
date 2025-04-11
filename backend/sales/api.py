@@ -40,7 +40,7 @@ def get_regions(
     l2_user_ids = [u.user_id for u in l2_users]
 
     regions = (
-        db.query(L2, User.email_id)
+        db.query(L2, User.email_id, User.name)
         .join(User, L2.user_id == User.user_id)
         .filter(L2.user_id.in_(l2_user_ids))
         .all()
@@ -51,8 +51,9 @@ def get_regions(
             RegionOut(
                 region_id=region.L2_id,
                 region_name=region.L2_name,
-                region_email=email
+                region_email=email,
+                regional_manager_name=name
             )
-            for region, email in regions
+            for region, email, name in regions
         ]
     )
