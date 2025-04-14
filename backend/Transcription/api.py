@@ -317,161 +317,101 @@ def get_transcription_analytics(
         raise HTTPException(status_code=500, detail=f"Error fetching transcription analytics: {str(e)}")
 
 
-# @router.get("/transcriptions-chart")
-# @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
-# def get_transcriptions_chart(
-#     time_period: str = Query("week", description="Filter by 'week', 'month', or 'year'"),
-#     store_id: Optional[str] = Query(None, description="Store ID to filter by"),
-#     region_id: Optional[str] = Query(None, description="Region ID to filter by"),
-#     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
-#     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
-#     db: Session = Depends(get_session),
-#     token: dict = Depends(verify_token),
-# ):
-#     """
-#     Get a chart of transcriptions over time, grouped by day.
-#     Returns a dictionary with dates as keys and transcription counts as values.
-#     """
-#     try:
-#         # Get user role and business_id for filtering
-#         user_id = token.get("user_id")
-#         role_str = token.get("role")
-        
-#         if not user_id or not role_str:
-#             raise HTTPException(status_code=401, detail="Unauthorized")
-            
-#         try:
-#             user_role = RoleEnum(role_str)
-#         except ValueError:
-#             raise HTTPException(status_code=403, detail="Invalid user role")
-            
-#         # Get the current user's details for business_id
-#         current_user = db.query(User).filter(User.user_id == user_id).first()
-#         if not current_user:
-#             raise HTTPException(status_code=404, detail="User not found")
-            
-#         business_id = current_user.business_id
-        
-#         # Parse dates
-#         if start_date and end_date:
-#             try:
-#                 start_date_obj = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%SZ")
-#                 end_date_obj = datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%SZ")
-#             except ValueError:
-#                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DDTHH:MM:SSZ")
-#         else:
-#             # Default to current time period
-#             today = datetime.utcnow().date()
-#             if time_period == "week":
-#                 # Calculate Monday of the current week
-#                 start_date_obj = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
-#                 end_date_obj = datetime.combine(today, datetime.max.time())
-#             elif time_period == "month":
-#                 start_date_obj = datetime.combine(today.replace(day=1), datetime.min.time())
-#                 end_date_obj = datetime.combine(today, datetime.max.time())
-#             elif time_period == "year":
-#                 start_date_obj = datetime.combine(today.replace(month=1, day=1), datetime.min.time())
-#                 end_date_obj = datetime.combine(today, datetime.max.time())
-#             else:
-#                 raise HTTPException(status_code=400, detail="Invalid time period. Use 'week', 'month', or 'year'")
-        
-#         # Base query for voice recordings
-#         base_query = db.query(VoiceRecording)
-        
-#         # Apply role-based filtering
-#         if user_role == RoleEnum.L4:
-#             # L4 can see all recordings in their business
-#             # No additional filtering needed
-#             pass
-#         elif user_role == RoleEnum.L3:
-#             # L3 can see recordings in their area
-#             base_query = (
-#                 base_query.join(User, VoiceRecording.user_id == User.user_id)
-#                 .join(L2, User.user_id == L2.user_id)
-#                 .join(L3, L2.area_id == L3.L3_id)
-#                 .filter(L3.user_id == user_id)
-#             )
-#         elif user_role == RoleEnum.L2:
-#             # L2 can see recordings in their area
-#             base_query = (
-#                 base_query.join(User, VoiceRecording.user_id == User.user_id)
-#                 .join(L2, User.user_id == L2.user_id)
-#                 .filter(L2.user_id == user_id)
-#             )
-#         elif user_role == RoleEnum.L1:
-#             # L1 can see recordings in their area
-#             base_query = (
-#                 base_query.join(User, VoiceRecording.user_id == User.user_id)
-#                 .join(L1, User.user_id == L1.user_id)
-#                 .filter(L1.user_id == user_id)
-#             )
-#         else:
-#             # L0 can only see their own recordings
-#             base_query = base_query.filter(VoiceRecording.user_id == user_id)
-        
-#         # Apply store filter if provided
-#         if store_id:
-#             base_query = base_query.filter(VoiceRecording.store_id == store_id)
-        
-#         # Apply region filter if provided
-#         if region_id:
-#             if user_role in [RoleEnum.L0, RoleEnum.L1]:
-#                 raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
-#             elif user_role == RoleEnum.L2:
-#                 l2_region = db.query(L2).filter(L2.L2_id == region_id).first()
-#                 if not l2_region or l2_region.user_id != user_id:
-#                     raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
-#                 regional_user_id = l2_region.user_id
-#             else:
-#                 l2_region = db.query(L2).filter(L2.L2_id == region_id).first()
-#                 if not l2_region:
-#                     raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
-#                 regional_user_id = l2_region.user_id
-            
-#             # Filter by users in the region
-#             downline_user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
-#             base_query = base_query.filter(VoiceRecording.user_id.in_(downline_user_ids))
-        
-#         # Apply date filters
-#         base_query = base_query.filter(
-#             VoiceRecording.created_at >= start_date_obj,
-#             VoiceRecording.created_at <= end_date_obj
-#         )
-        
-#         # Get all recordings for the filtered query
-#         recordings = base_query.all()
-#         recording_ids = [rec.id for rec in recordings]
-        
-#         # Get transcriptions for these recordings
-#         transcriptions = db.query(Transcription).filter(
-#             Transcription.audio_id.in_(recording_ids)
-#         ).all()
-        
-#         # Group transcriptions by date
-#         daily_counts = {}
-#         current_date = start_date_obj.date()
-#         end_date = end_date_obj.date()
-        
-#         # Initialize all dates in the range with 0
-#         while current_date <= end_date:
-#             daily_counts[current_date.isoformat()] = 0
-#             current_date += timedelta(days=1)
-        
-#         # Count transcriptions by date
-#         for trans in transcriptions:
-#             # Find the recording for this transcription
-#             recording = next((rec for rec in recordings if rec.id == trans.audio_id), None)
-#             if recording:
-#                 date_str = recording.created_at.date().isoformat()
-#                 if date_str in daily_counts:
-#                     daily_counts[date_str] += 1
-        
-#         # Debug information
-#         print(f"Total recordings: {len(recording_ids)}")
-#         print(f"Total transcriptions: {len(transcriptions)}")
-#         print(f"Daily counts: {daily_counts}")
-        
-#         return daily_counts
-        
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error fetching transcriptions chart: {str(e)}")
+@router.get("/transcriptions-chart")
+def get_transcriptions_chart(
+    time_period: str = Query("week", description="Filter by 'week', 'month', or 'year'"),
+    store_id: Optional[str] = Query(None, description="Store ID to filter by"),
+    region_id: Optional[str] = Query(None, description="Region ID to filter by"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    db: Session = Depends(get_session),
+    token: dict = Depends(verify_token),
+):
+    try:
+        user_id = token.get("user_id")
+        role_str = token.get("role")
+
+        if not user_id or not role_str:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        try:
+            user_role = RoleEnum(role_str)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Invalid user role")
+
+        current_user = db.query(User).filter(User.user_id == user_id).first()
+        if not current_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if start_date and end_date:
+            try:
+                start_date_obj = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%SZ")
+                end_date_obj = datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DDTHH:MM:SSZ")
+        else:
+            today = datetime.utcnow().date()
+            if time_period == "week":
+                start_date_obj = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
+                end_date_obj = datetime.combine(today, datetime.max.time())
+            elif time_period == "month":
+                start_date_obj = datetime.combine(today.replace(day=1), datetime.min.time())
+                end_date_obj = datetime.combine(today, datetime.max.time())
+            elif time_period == "year":
+                start_date_obj = datetime.combine(today.replace(month=1, day=1), datetime.min.time())
+                end_date_obj = datetime.combine(today, datetime.max.time())
+            else:
+                raise HTTPException(status_code=400, detail="Invalid time period. Use 'week', 'month', or 'year'")
+
+        # Build list of user IDs to include (downline + self)
+        if region_id:
+            if user_role in [RoleEnum.L0, RoleEnum.L1]:
+                raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
+            l2_region = db.query(L2).filter(L2.L2_id == region_id).first()
+            if not l2_region:
+                raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+            if user_role == RoleEnum.L2 and l2_region.user_id != user_id:
+                raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+            regional_user_id = l2_region.user_id
+            user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
+            user_ids.append(regional_user_id)
+        else:
+            user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
+            user_ids.append(user_id)
+
+        # Query voice recordings for those user IDs
+        base_query = db.query(VoiceRecording).filter(
+            VoiceRecording.user_id.in_(user_ids),
+            VoiceRecording.created_at >= start_date_obj,
+            VoiceRecording.created_at <= end_date_obj
+        )
+
+        if store_id:
+            base_query = base_query.filter(VoiceRecording.store_id == store_id)
+
+        recordings = base_query.all()
+        recording_ids = [rec.id for rec in recordings]
+
+        transcriptions = db.query(Transcription).filter(
+            Transcription.audio_id.in_(recording_ids)
+        ).all()
+
+        # Prepare daily counts dictionary
+        daily_counts = {}
+        current_date = start_date_obj.date()
+        end_date = end_date_obj.date()
+        while current_date <= end_date:
+            daily_counts[current_date.isoformat()] = 0
+            current_date += timedelta(days=1)
+
+        for trans in transcriptions:
+            recording = next((rec for rec in recordings if rec.id == trans.audio_id), None)
+            if recording:
+                date_str = recording.created_at.date().isoformat()
+                if date_str in daily_counts:
+                    daily_counts[date_str] += 1
+
+        return daily_counts
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching transcriptions chart: {str(e)}")
