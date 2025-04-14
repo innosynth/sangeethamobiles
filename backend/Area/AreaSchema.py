@@ -22,6 +22,7 @@ class AreaResponse(BaseModel):
 class AreaSummary(BaseModel):
     area_id: str
     area_name: str
+    asm_name: str
 
     class Config:
         from_attributes = True
