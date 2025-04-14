@@ -67,7 +67,12 @@ async def read_stores(
 ):
     user_id = token.get("user_id")
     user_role = token.get("role")
-    business_id = User.business_id
+    
+    # Get business_id from the database instead of using a class attribute
+    user = db.query(User.business_id).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    business_id = user.business_id
 
     stores = extract_stores(business_id, user_id, user_role, db)
 

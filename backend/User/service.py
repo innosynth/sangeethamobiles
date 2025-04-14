@@ -28,6 +28,52 @@ def get_l4_users(db, business_id):
     return users
 
 
+def get_user_ids_by_hierarchy(user_id, user_role, db):
+    """
+    Optimized function to get only user IDs based on hierarchy without fetching additional data.
+    This is much faster than extract_users when only IDs are needed.
+    """
+    current_user = db.query(User.business_id, User.email_id).filter(User.user_id == user_id).first()
+
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    business_id = current_user.business_id
+    email_id = current_user.email_id
+    
+    # Base case - always include the current user
+    result_ids = [user_id]
+    
+    if user_role == RoleEnum.L4:
+        # For L4, get all users in the business
+        user_ids = db.query(User.user_id).filter(User.business_id == business_id).all()
+        result_ids = [user_id[0] for user_id in user_ids]
+    elif user_role in [RoleEnum.L1, RoleEnum.L2, RoleEnum.L3]:
+        # For hierarchy-based roles, recursively get subordinates
+        to_process = [email_id]
+        processed = set()
+        
+        while to_process:
+            current_emails = to_process.copy()
+            to_process.clear()
+            
+            if not current_emails:
+                break
+                
+            # Get all direct reports in one query
+            subordinates = db.query(User.user_id, User.email_id).filter(
+                User.reports_to.in_(current_emails)
+            ).all()
+            
+            for sub in subordinates:
+                if sub.email_id not in processed:
+                    result_ids.append(sub.user_id)
+                    processed.add(sub.email_id)
+                    to_process.append(sub.email_id)
+                    
+    return result_ids
+
+
 def extract_users(user_id, user_role, db):
     current_user = (
         db.query(User.business_id, User.email_id)
