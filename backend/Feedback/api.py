@@ -241,25 +241,16 @@ def get_feedback_rating(
         raise HTTPException(status_code=403, detail="Invalid role")
 
     if regional_id:
-        if user_role in [RoleEnum.L0, RoleEnum.L1]:
-            raise HTTPException(status_code=403, detail="Access to regional data denied for your role.")
-        elif user_role == RoleEnum.L2:
-            l2 = db.query(L2).filter(L2.user_id == user_id, L2.L2_id == regional_id).first()
-            if not l2:
-                raise HTTPException(status_code=403, detail="You can only access your own regional data.")
-            regional_user_id = l2.user_id
-        else:  # L3 and L4 can access any region
-            l2 = db.query(L2).filter(L2.L2_id == regional_id).first()
-            if not l2:
-                raise HTTPException(status_code=404, detail="Invalid regional_id provided.")
-            regional_user_id = l2.user_id
-
-        users = extract_users(regional_user_id, user_role, db)
-        user_ids = [u.user_id for u in users]
+        l2 = db.query(L2).filter(L2.L2_id == regional_id).first()
+        if not l2:
+            raise HTTPException(status_code=404, detail="Invalid regional_id provided.")
+        if user_role == RoleEnum.L2 and l2.user_id != user_id:
+            raise HTTPException(status_code=403, detail="You can only access your own regional data.")
+        users = extract_users(l2.user_id, RoleEnum.L2, db)
     else:
         users = extract_users(user_id, user_role, db)
-        user_ids = [u.user_id for u in users]
 
+    user_ids = [u.user_id for u in users]
     start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
     query = db.query(VoiceRecording).filter(
@@ -274,24 +265,21 @@ def get_feedback_rating(
     voice_recordings = query.all()
 
     if not voice_recordings:
-        raise HTTPException(status_code=404, detail="No voice recordings found")
+        return {
+            "requested_by": user_id if user_role != RoleEnum.L4 else "Super Admin",
+            "total_feedbacks": 0,
+            "positive_feedbacks": 0,
+            "negative_feedbacks": 0,
+            "average_feedbacks": 0,
+        }
 
     audio_ids = [rec.id for rec in voice_recordings]
-
-    feedbacks = (
-        db.query(FeedbackModel)
-        .filter(
-            FeedbackModel.audio_id.in_(audio_ids),
-            FeedbackModel.created_at >= start_date_obj,
-            FeedbackModel.created_at <= end_date_obj,
-        )
-        .all()
-    )
-
-    total_feedbacks = len(feedbacks)
-    positive_feedbacks = 0
-    negative_feedbacks = 0
-    average_feedbacks = 0
+    feedbacks = db.query(FeedbackModel).filter(
+        FeedbackModel.audio_id.in_(audio_ids),
+        FeedbackModel.created_at >= start_date_obj,
+        FeedbackModel.created_at <= end_date_obj,
+    ).all()
+    positive_feedbacks = negative_feedbacks = average_feedbacks = 0
 
     for feedback in feedbacks:
         try:
@@ -307,8 +295,8 @@ def get_feedback_rating(
             continue
 
     return {
-        "user_id": user_id if user_role != RoleEnum.L3 else "Super Admin",
-        "total_feedbacks": total_feedbacks,
+        "requested_by": user_id if user_role != RoleEnum.L4 else "Super Admin",
+        "total_feedbacks": len(feedbacks),
         "positive_feedbacks": positive_feedbacks,
         "negative_feedbacks": negative_feedbacks,
         "average_feedbacks": average_feedbacks,
