@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.get("/last-login", response_model=LastLogin)
-async def get_last_login(
+def get_last_login(
     user_id: Optional[str] = Query(None, description="User ID to fetch last login for"),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
