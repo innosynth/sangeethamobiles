@@ -31,7 +31,7 @@ router = APIRouter()
 
 @router.post("/create-store", response_model=StoreResponse)
 @check_role([RoleEnum.L4])
-async def create_store(
+def create_store(
     store: StoreCreate,
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
@@ -61,7 +61,7 @@ async def create_store(
 
 @router.get("/get-all-stores", response_model=List[StoreSummary])
 # @check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
-async def read_stores(
+def read_stores(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -169,7 +169,7 @@ def get_store_region(
 
 @router.put("/edit-store/{L0_id}", response_model=StoreUpdateResponse)
 @check_role([RoleEnum.L4])  # Ensuring only L4 users can edit stores
-async def edit_store(
+def edit_store(
     L0_id: str,
     store_update: StoreUpdateSchema,  # Updated schema
     db: Session = Depends(get_session),
@@ -230,7 +230,7 @@ async def edit_store(
 
 @router.delete("/delete-store/{L0_id}", response_model=dict)
 @check_role([RoleEnum.L4])
-async def delete_store(
+def delete_store(
     L0_id: str,
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
