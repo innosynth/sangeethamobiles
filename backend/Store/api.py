@@ -168,30 +168,33 @@ def get_store_region(
     )
 
 @router.put("/edit-store/{L0_id}", response_model=StoreUpdateResponse)
-@check_role([RoleEnum.L4])  # Ensuring only L4 users can edit stores
 def edit_store(
     L0_id: str,
-    store_update: StoreUpdateSchema,  # Updated schema
+    store_update: StoreUpdateSchema,
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
-
     try:
-        store = (
-            db.query(L0)
-            .filter(
-                L0.L0_id == L0_id,
-                L0.user_id
-                == token[
-                    "user_id"
-                ],  # Ensuring user can only edit their business stores
+        token_user_id = token.get("user_id")
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        try:
+            user_role = RoleEnum(token.get("role", ""))
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Invalid user role")
+
+        if user_role != RoleEnum.L4:
+            raise HTTPException(
+                status_code=403,
+                detail="Only administrators can modify store information",
             )
-            .first()
-        )
+
+        store = db.query(L0).filter(L0.L0_id == L0_id).first()
 
         if not store:
             raise HTTPException(
-                status_code=404, detail="Store not found or unauthorized access"
+                status_code=404, detail="Store not found"
             )
 
         if store_update.L0_code and store_update.L0_code != store.L0_code:
@@ -202,7 +205,8 @@ def edit_store(
             )
             if existing_store:
                 raise HTTPException(
-                    status_code=400, detail="Store code already in use by another store"
+                    status_code=400,
+                    detail="Store code already in use by another store",
                 )
 
         update_data = store_update.dict(exclude_unset=True)
@@ -210,11 +214,13 @@ def edit_store(
             setattr(store, field, value)
         db.commit()
         db.refresh(store)
+
         return StoreUpdateResponse(
             message="Store updated successfully",
             store_id=store.L0_id,
             updated_fields=list(update_data.keys()),
         )
+
     except HTTPException:
         db.rollback()
         raise
@@ -238,13 +244,7 @@ def delete_store(
     try:
         store = (
             db.query(L0)
-            .filter(
-                L0.L0_id == L0_id,
-                L0.user_id
-                == token[
-                    "user_id"
-                ],  # Ensuring only stores of this user's business can be deleted
-            )
+            .filter(L0.L0_id == L0_id)
             .first()
         )
 

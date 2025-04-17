@@ -352,6 +352,7 @@ def get_daily_recording_hours(
 
 
 @router.get("/recordings-insights", response_model=dict)
+@check_role([RoleEnum.L1, RoleEnum.L2, RoleEnum.L3, RoleEnum.L4])
 def get_recordings_insights(
     user_id: Optional[str] = Query(None, description="User ID to fetch insights for"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
