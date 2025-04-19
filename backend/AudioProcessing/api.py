@@ -3,9 +3,10 @@ import datetime
 from fastapi import APIRouter, UploadFile,BackgroundTasks, File, Form, Query
 from typing import List, Optional
 from sqlalchemy import func, cast, Date
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException
+from backend.State.stateModel import L3
 from backend.User.service import extract_users
 from backend.db.db import get_session
 from backend.AudioProcessing.schema import RecordingResponse, GetRecording, GetLastRecording
@@ -68,13 +69,16 @@ def upload_recording(
 
 
 @router.get("/get-recordings", response_model=List[GetRecording])
-async def get_recordings(
+def get_recordings(
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timeline: Optional[str] = Query(None, description="Timeline e.g. Last 7 days, Last 30 days, Previous month, Last 90 days, Last 365 days, All time"),
     store_id: Optional[str] = None,
     regional_id: Optional[str] = None,
+    state_id: Optional[str] = None,
+    city_id: Optional[str] = None,
 ):
     user_id = token.get("user_id")
     user_role_str = token.get("role")
@@ -84,9 +88,22 @@ async def get_recordings(
     except ValueError:
         raise HTTPException(status_code=403, detail="Invalid user role.")
 
-    start_date_obj, end_date_obj = parse_dates(start_date, end_date)
+    # Use timeline to override start and end date if they are not manually provided
+    if not start_date and not end_date:
+        start_date_obj, end_date_obj = parse_timeline(timeline)
+    else:
+        start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
-    if regional_id:
+    # Determine downline users based on role and filters
+    users = []
+
+    if city_id:
+        l1_users = db.query(L1).filter(L1.L1_id == city_id).all()
+        users = [u for l1 in l1_users for u in extract_users(l1.user_id, RoleEnum.L1, db)]
+    elif state_id:
+        l3_users = db.query(L3).filter(L3.L3_id == state_id).all()
+        users = [u for l3 in l3_users for u in extract_users(l3.user_id, RoleEnum.L3, db)]
+    elif regional_id:
         if user_role in [RoleEnum.L0, RoleEnum.L1]:
             raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
         elif user_role == RoleEnum.L2:
@@ -100,10 +117,13 @@ async def get_recordings(
                 raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
             regional_user_id = l2_region.user_id
 
-        downline_user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
+        users = extract_users(regional_user_id, RoleEnum.L2, db)
     else:
-        downline_user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
+        users = extract_users(user_id, user_role, db)
 
+    downline_user_ids = [u.user_id for u in users if u]
+
+    # Get recordings
     recordings = extract_recordings(
         db, user_id, user_role,
         start_date=start_date_obj,
@@ -111,23 +131,21 @@ async def get_recordings(
         store_id=store_id,
         user_ids=downline_user_ids
     )
-    
-    # Get all recording IDs
-    recording_ids = [rec.id for rec in recordings]
-    
+
     # Get transcriptions for these recordings
+    recording_ids = [rec.id for rec in recordings]
     transcriptions = {}
     if recording_ids:
         transcription_records = db.query(Transcription).filter(
             Transcription.audio_id.in_(recording_ids)
         ).all()
-        
         for trans in transcription_records:
             transcriptions[trans.audio_id] = {
                 "id": trans.id,
                 "text": trans.transcription_text
             }
 
+    # Prepare response
     return [
         GetRecording(
             recording_id=rec.id,
@@ -146,12 +164,47 @@ async def get_recordings(
             created_at=rec.created_at,
             modified_at=rec.modified_at,
             transcription_status=rec.transcription_status or TransctriptionStatus.pending,
-            transcription_text=transcriptions.get(rec.id, {}).get("text") if rec.id in transcriptions else None,
-            transcription_id=transcriptions.get(rec.id, {}).get("id") if rec.id in transcriptions else None
+            transcription_text=transcriptions.get(rec.id, {}).get("text"),
+            transcription_id=transcriptions.get(rec.id, {}).get("id")
         )
         for rec in recordings
     ]
 
+def parse_timeline(timeline: str):
+    today = date.today()
+
+    if timeline == "Last 7 days":
+        start = today - timedelta(days=6)
+        end = today
+
+    elif timeline == "Last 30 days":
+        start = today - timedelta(days=29)
+        end = today
+
+    elif timeline == "Previous month":
+        first_day_this_month = today.replace(day=1)
+        last_day_previous_month = first_day_this_month - timedelta(days=1)
+        start = last_day_previous_month.replace(day=1)
+        end = last_day_previous_month
+
+    elif timeline == "Last 90 days":
+        start = today - timedelta(days=89)
+        end = today
+
+    elif timeline == "Last 365 days":
+        start = today - timedelta(days=364)
+        end = today
+
+    elif timeline == "All time":
+        start = date(2000, 1, 1)
+        end = today
+
+    else:
+        raise ValueError(f"Unsupported timeline: {timeline}")
+
+    start_datetime = datetime.combine(start, datetime.min.time())
+    end_datetime = datetime.combine(end, datetime.max.time())
+    return start_datetime, end_datetime
 
 def parse_dates(start_date: Optional[str], end_date: Optional[str]):
     try:
@@ -182,6 +235,9 @@ def parse_dates(start_date: Optional[str], end_date: Optional[str]):
 def get_last_recording(
     user_id: Optional[str] = Query(None, description="User ID to fetch the last recording for"),
     regional_id: Optional[str] = Query(None, description="Filter by regional (L2) ID"),
+    state_id: Optional[str] = Query(None, description="Filter by state (L3) ID"),
+    city_id: Optional[str] = Query(None, description="Filter by city (L1) ID"),
+    timeline: Optional[str] = Query(None, description="Timeline e.g. Last 7 days, Last 30 days,Previous month,Last 90 days,Last 365 days,All time"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     db: Session = Depends(get_session),
@@ -199,23 +255,37 @@ def get_last_recording(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role")
 
-        # Determine accessible users based on role
+        # Determine user scope
+        users = []
+
         if user_id:
             users = [db.query(User).filter(User.user_id == user_id).first()]
-        elif user_role == RoleEnum.L2 and regional_id:
+        elif regional_id:
             l2 = db.query(L2).filter(L2.L2_id == regional_id).first()
             if not l2:
                 raise HTTPException(status_code=404, detail="Region not found")
             users = extract_users(l2.user_id, RoleEnum.L2, db)
+        elif city_id:
+            l1 = db.query(L1).filter(L1.L1_id == city_id).first()
+            if not l1:
+                raise HTTPException(status_code=404, detail="City not found")
+            users = extract_users(l1.user_id, RoleEnum.L1, db)
+        elif state_id:
+            l3 = db.query(L3).filter(L3.L3_id == state_id).first()
+            if not l3:
+                raise HTTPException(status_code=404, detail="State not found")
+            users = extract_users(l3.user_id, RoleEnum.L3, db)
         else:
             users = extract_users(token_user_id, user_role, db)
 
         user_ids = [u.user_id for u in users if u]
 
-        # Parse date range
-        if start_date or end_date:
+        # Date filtering
+        if timeline:
+            start_date_obj, end_date_obj = parse_timeline(timeline)
+        else:
             if not start_date:
-                start_date_obj = datetime.utcnow() - timedelta(days=30)
+                start_date_obj = datetime(2000, 1, 1)
             else:
                 start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
 
@@ -224,9 +294,6 @@ def get_last_recording(
             else:
                 end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
-        else:
-            start_date_obj = datetime(2000, 1, 1)
-            end_date_obj = datetime.utcnow()
 
         query = (
             db.query(
@@ -274,9 +341,11 @@ def get_last_recording(
 
 @router.get("/get-daily-recording-hours", response_model=dict)
 def get_daily_recording_hours(
-    time_period: str = Query("week", description="Filter by 'week', 'month', or 'year'"),
+    timeline: Optional[str] = Query("Last 7 days", description="Timeline e.g. Last 7 days, Last 30 days, Previous month, Last 90 days, Last 365 days, All time"),
     user_id: Optional[str] = Query(None, description="User ID to fetch recording hours for"),
     regional_id: Optional[str] = Query(None, description="Optional Region (L2) ID"),
+    state_id: Optional[str] = Query(None, description="Optional State (L3) ID"),
+    city_id: Optional[str] = Query(None, description="Optional City (L1) ID"),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -292,9 +361,17 @@ def get_daily_recording_hours(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role provided in token.")
 
-        # Step 1: Determine target users
+        # Determine target users based on filters
+        users = []
+
         if user_id:
             users = [db.query(User).filter(User.user_id == user_id).first()]
+        elif city_id:
+            l1_users = db.query(L1).filter(L1.L1_id == city_id).all()
+            users = [u for l1 in l1_users for u in extract_users(l1.user_id, RoleEnum.L1, db)]
+        elif state_id:
+            l3_users = db.query(L3).filter(L3.L3_id == state_id).all()
+            users = [u for l3 in l3_users for u in extract_users(l3.user_id, RoleEnum.L3, db)]
         elif regional_id:
             l2 = db.query(L2).filter(L2.L2_id == regional_id).first()
             if not l2:
@@ -305,21 +382,8 @@ def get_daily_recording_hours(
 
         user_ids = [u.user_id for u in users if u]
 
-        # Step 2: Define time range
-        today = datetime.utcnow().date()
-        if time_period == "week":
-            start_date = today - timedelta(days=today.weekday())
-            end_date = today
-        elif time_period == "month":
-            start_date = today.replace(day=1)
-            end_date = today
-        elif time_period == "year":
-            start_date = today.replace(month=1, day=1)
-            end_date = today
-        else:
-            raise HTTPException(status_code=400, detail="Invalid time period. Use 'week', 'month', or 'year'.")
+        start_date, end_date = parse_timeline(timeline)
 
-        # Step 3: Query daily recording hours
         daily_hours = (
             db.query(
                 cast(VoiceRecording.start_time, Date).label("recording_date"),
@@ -338,7 +402,7 @@ def get_daily_recording_hours(
 
         return {
             "user_id": user_id or token_user_id,
-            "time_period": time_period,
+            "timeline": timeline,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "daily_recording_hours": {
@@ -357,7 +421,10 @@ def get_recordings_insights(
     user_id: Optional[str] = Query(None, description="User ID to fetch insights for"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
-    regional_id: Optional[str] = Query(None, description="Regional ID (L2 ID) to filter by"),
+    regional_id: Optional[str] = Query(None, description="Regional ID (L2 ID)"),
+    state_id: Optional[str] = Query(None, description="State ID (L3 ID)"),
+    city_id: Optional[str] = Query(None, description="City ID (L1 ID)"),
+    timeline: Optional[str] = Query(None, description="Timeline e.g. Last 7 days, Last 30 days,Previous month,Last 90 days,Last 365 days, All time"),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -373,33 +440,50 @@ def get_recordings_insights(
         except ValueError:
             raise HTTPException(status_code=403, detail="Invalid user role provided in token.")
 
-        start_date_obj, end_date_obj = parse_dates(start_date, end_date)
+        # Parse date range
+        if timeline and (start_date or end_date):
+            raise HTTPException(status_code=400, detail="Provide either timeline or start/end date, not both.")
+        if timeline:
+            start_date_obj, end_date_obj = parse_timeline(timeline)
+        else:
+            start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
-        if regional_id:
+        user_reports = None
+
+        # Priority: city_id > state_id > regional_id
+        if city_id:
+            city = db.query(L1).filter(L1.L1_id == city_id).first()
+            if not city:
+                raise HTTPException(status_code=404, detail="Invalid city_id")
+            city_user_id = city.user_id
+            user_reports = extract_users(city_user_id, RoleEnum.L1, db)
+
+        elif state_id:
+            state = db.query(L3).filter(L3.L3_id == state_id).first()
+            if not state:
+                raise HTTPException(status_code=404, detail="Invalid state_id")
+            state_user_id = state.user_id
+            user_reports = extract_users(state_user_id, RoleEnum.L3, db)
+
+        elif regional_id:
             if user_role in [RoleEnum.L0, RoleEnum.L1]:
                 raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
-            elif user_role == RoleEnum.L2:
-                l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
-                if not l2_region or l2_region.user_id != token_user_id:
-                    raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
-                regional_user_id = l2_region.user_id
-            else:
-                l2_region = db.query(L2).filter(L2.L2_id == regional_id).first()
-                if not l2_region:
-                    raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
-                regional_user_id = l2_region.user_id
-
+            l2 = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not l2:
+                raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+            if user_role == RoleEnum.L2 and l2.user_id != token_user_id:
+                raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+            regional_user_id = l2.user_id
             user_reports = extract_users(regional_user_id, RoleEnum.L2, db)
+
         else:
             user_reports = extract_users(token_user_id, user_role, db)
 
+        # Filter down if user_id is specifically provided
         if user_id:
             allowed_user_ids = {user.user_id for user in user_reports}
             if user_id not in allowed_user_ids:
-                raise HTTPException(
-                    status_code=403,
-                    detail="You don't have permission to access this user's insights.",
-                )
+                raise HTTPException(status_code=403, detail="You don't have permission to access this user's insights.")
             user_ids = [user_id]
         else:
             user_ids = [user.user_id for user in user_reports]
@@ -410,20 +494,13 @@ def get_recordings_insights(
             VoiceRecording.created_at <= end_date_obj,
         ]
 
-        # Fetch Insights
-        total_seconds = (
-            db.query(func.sum(VoiceRecording.call_duration)).filter(*filters).scalar()
-            or 0
-        )
+        # === Insights calculation ===
+        total_seconds = db.query(func.sum(VoiceRecording.call_duration)).filter(*filters).scalar() or 0
         total_hours = total_seconds / 3600
 
-        total_recordings = (
-            db.query(func.count(VoiceRecording.id)).filter(*filters).scalar() or 0
-        )
+        total_recordings = db.query(func.count(VoiceRecording.id)).filter(*filters).scalar() or 0
 
-        avg_length = (
-            db.query(func.avg(VoiceRecording.call_duration)).filter(*filters).scalar()
-        )
+        avg_length = db.query(func.avg(VoiceRecording.call_duration)).filter(*filters).scalar()
         avg_minutes = round(avg_length / 60, 2) if avg_length else 0
 
         hourly_counts = (
@@ -436,16 +513,9 @@ def get_recordings_insights(
             .order_by(func.count().desc())
             .all()
         )
+        peak_hours = {int(r.hour_of_day): r.call_count for r in hourly_counts}
 
-        peak_hours = {
-            int(record.hour_of_day): record.call_count for record in hourly_counts
-        }
-
-        # Total listening time
-        total_listening_seconds = (
-            db.query(func.sum(VoiceRecording.listening_time)).filter(*filters).scalar()
-            or 0
-        )
+        total_listening_seconds = db.query(func.sum(VoiceRecording.listening_time)).filter(*filters).scalar() or 0
         total_listening_hours = total_listening_seconds / 3600
 
         last_listening = (
@@ -467,9 +537,7 @@ def get_recordings_insights(
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching recordings insights: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error fetching recordings insights: {e}")
 
 
 @router.put("/update-listening-time", response_model=dict)
