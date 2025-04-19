@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
-from backend.AudioProcessing.api import parse_dates
+from backend.Area.AreaModel import L1
+from backend.AudioProcessing.api import parse_dates, parse_timeline
+from backend.State.stateModel import L3
 from backend.User.service import extract_users
 from backend.auth.jwt_handler import verify_token
 from backend.db.db import get_session
@@ -145,10 +147,13 @@ def get_all_feedbacks(
     token: dict = Depends(verify_token),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timeline: Optional[str] = Query(None, description="Timeline e.g. Last 7 days, Last 30 days, Previous month, Last 90 days, Last 365 days, All time"),
     store_id: Optional[str] = None,
     regional_id: Optional[str] = None,
+    state_id: Optional[str] = None,
+    city_id: Optional[str] = None,
 ):
-    # Authentication check
+    # Authentication
     user_id = token.get("user_id")
     role_str = token.get("role")
     if not user_id or role_str is None:
@@ -159,32 +164,30 @@ def get_all_feedbacks(
     except ValueError:
         raise HTTPException(status_code=403, detail="Invalid user role.")
 
-    # Parse date range
+    # Parse date range or fallback to timeline
     try:
         if not start_date or not end_date:
-            end_date_obj = datetime.utcnow()
-            start_date_obj = end_date_obj - timedelta(days=30)
+            start_date_obj, end_date_obj = parse_timeline(timeline)
         else:
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
             end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
-            if start_date_obj.date() == end_date_obj.date():
-                end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
-
-        if start_date_obj > end_date_obj:
-            raise HTTPException(
-                status_code=400, detail="Start date must be before end date"
-            )
-
+            if start_date_obj > end_date_obj:
+                raise HTTPException(status_code=400, detail="Start date must be before end date")
     except ValueError:
-        raise HTTPException(
-            status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
-        )
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
+    # Determine downline users based on filters
+    users = []
 
-    # Regional filtering
-    if regional_id:
+    if city_id:
+        l1_users = db.query(L1).filter(L1.L1_id == city_id).all()
+        users = [u for l1 in l1_users for u in extract_users(l1.user_id, RoleEnum.L1, db)]
+    elif state_id:
+        l3_users = db.query(L3).filter(L3.L3_id == state_id).all()
+        users = [u for l3 in l3_users for u in extract_users(l3.user_id, RoleEnum.L3, db)]
+    elif regional_id:
         if user_role in [RoleEnum.L0, RoleEnum.L1]:
             raise HTTPException(status_code=403, detail="L0 and L1 users cannot use regional filter.")
         elif user_role == RoleEnum.L2:
@@ -198,10 +201,13 @@ def get_all_feedbacks(
                 raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
             regional_user_id = region.user_id
 
-        user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
+        users = extract_users(regional_user_id, RoleEnum.L2, db)
     else:
-        user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
+        users = extract_users(user_id, user_role, db)
 
+    user_ids = [u.user_id for u in users if u]
+
+    # Fetch feedbacks
     feedbacks = extract_feedbacks(
         db=db,
         user_id=None,
@@ -213,9 +219,7 @@ def get_all_feedbacks(
     )
 
     if not feedbacks:
-        raise HTTPException(
-            status_code=404, detail="No feedback found for the given period"
-        )
+        raise HTTPException(status_code=404, detail="No feedback found for the given period")
 
     return feedbacks
 
@@ -226,12 +230,15 @@ def get_feedback_rating(
     token: dict = Depends(verify_token),
     store_id: Optional[str] = None,
     regional_id: Optional[str] = None,
+    state_id: Optional[str] = None,
+    city_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timeline: Optional[str] = Query(None, description="Timeline e.g. Last 7 days, Last 30 days, Previous month, Last 90 days, Last 365 days, All time")
 ):
+    # Authentication check
     user_id = token.get("user_id")
     role_str = token.get("role")
-
     if not user_id or role_str is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -240,19 +247,50 @@ def get_feedback_rating(
     except ValueError:
         raise HTTPException(status_code=403, detail="Invalid role")
 
-    if regional_id:
-        l2 = db.query(L2).filter(L2.L2_id == regional_id).first()
-        if not l2:
-            raise HTTPException(status_code=404, detail="Invalid regional_id provided.")
-        if user_role == RoleEnum.L2 and l2.user_id != user_id:
-            raise HTTPException(status_code=403, detail="You can only access your own regional data.")
-        users = extract_users(l2.user_id, RoleEnum.L2, db)
+    # Parse date range or fallback to timeline
+    try:
+        if not start_date or not end_date:
+            start_date_obj, end_date_obj = parse_timeline(timeline)
+        else:
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
+
+            if start_date_obj > end_date_obj:
+                raise HTTPException(status_code=400, detail="Start date must be before end date")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    # Determine downline users based on filters
+    users = []
+
+    if city_id:
+        l1_users = db.query(L1).filter(L1.L1_id == city_id).all()
+        users = [u for l1 in l1_users for u in extract_users(l1.user_id, RoleEnum.L1, db)]
+    elif state_id:
+        l3_users = db.query(L3).filter(L3.L3_id == state_id).all()
+        users = [u for l3 in l3_users for u in extract_users(l3.user_id, RoleEnum.L3, db)]
+    elif regional_id:
+        if user_role in [RoleEnum.L0, RoleEnum.L1]:
+            raise HTTPException(status_code=403, detail="L0 and L1 users cannot use regional filter.")
+        elif user_role == RoleEnum.L2:
+            region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not region or region.user_id != user_id:
+                raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
+            regional_user_id = region.user_id
+        else:
+            region = db.query(L2).filter(L2.L2_id == regional_id).first()
+            if not region:
+                raise HTTPException(status_code=404, detail="Invalid regional ID provided.")
+            regional_user_id = region.user_id
+
+        users = extract_users(regional_user_id, RoleEnum.L2, db)
     else:
         users = extract_users(user_id, user_role, db)
 
     user_ids = [u.user_id for u in users]
-    start_date_obj, end_date_obj = parse_dates(start_date, end_date)
 
+    # Fetch voice recordings
     query = db.query(VoiceRecording).filter(
         VoiceRecording.user_id.in_(user_ids),
         VoiceRecording.created_at >= start_date_obj,
@@ -279,6 +317,7 @@ def get_feedback_rating(
         FeedbackModel.created_at >= start_date_obj,
         FeedbackModel.created_at <= end_date_obj,
     ).all()
+
     positive_feedbacks = negative_feedbacks = average_feedbacks = 0
 
     for feedback in feedbacks:

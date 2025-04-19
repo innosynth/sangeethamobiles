@@ -1,7 +1,7 @@
 from fastapi import HTTPException, BackgroundTasks, Query
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from backend.AudioProcessing.api import parse_dates
+from backend.AudioProcessing.api import parse_dates, parse_timeline
 from backend.AudioProcessing.service import extract_recordings
 from backend.Transcription.service import transcribe_audio
 from backend.db.db import get_session
@@ -156,6 +156,9 @@ def get_transcription_analytics(
     end_date: Optional[str] = None,
     store_id: Optional[str] = None,
     regional_id: Optional[str] = None,
+    state_id: Optional[str] = None,
+    city_id: Optional[str] = None,
+    timeline: Optional[str] = Query(None, description="Timeline e.g. Last 7 days, Last 30 days, Previous month, Last 90 days, Last 365 days, All time"),
 ):
     try:
         user_id = token.get("user_id")
@@ -165,6 +168,22 @@ def get_transcription_analytics(
         user_role = RoleEnum(role_str)
 
         start_date_obj, end_date_obj = parse_dates(start_date, end_date)
+
+        # Handle Timeline filter if provided
+        if timeline:
+            end_date_obj = datetime.utcnow().date()
+            if timeline == "Last 7 days":
+                start_date_obj = end_date_obj - timedelta(days=7)
+            elif timeline == "Last 30 days":
+                start_date_obj = end_date_obj - timedelta(days=30)
+            elif timeline == "Last 90 days":
+                start_date_obj = end_date_obj - timedelta(days=90)
+            elif timeline == "Last 180 days":
+                start_date_obj = end_date_obj - timedelta(days=180)
+            elif timeline == "Last 365 days":
+                start_date_obj = end_date_obj - timedelta(days=365)
+            else:
+                raise HTTPException(status_code=400, detail="Invalid timeline. Use 'Last 7 days', 'Last 30 days', etc.")
 
         # RBAC
         if regional_id:
@@ -183,6 +202,16 @@ def get_transcription_analytics(
             downline_user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
         else:
             downline_user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
+
+        # Filter by state_id and city_id if provided
+        if state_id:
+            downline_user_ids = [
+                u.user_id for u in extract_users(user_id, user_role, db) if u.state_id == state_id
+            ]
+        if city_id:
+            downline_user_ids = [
+                u.user_id for u in extract_users(user_id, user_role, db) if u.city_id == city_id
+            ]
 
         # Recordings
         recordings = extract_recordings(
@@ -266,9 +295,8 @@ def get_transcription_analytics(
 
             return {k: {"count": v, "percentage": p} for k, v, p in percentages}
 
-
-        PositiveUrl=generate_word_cloud(all_positive_keywords, POSITIVE_WORD_CLOUD_PATH, "Positive Keywords")
-        NegativeUrl=generate_word_cloud(all_negative_keywords, NEGATIVE_WORD_CLOUD_PATH, "Negative Keywords")
+        PositiveUrl = generate_word_cloud(all_positive_keywords, POSITIVE_WORD_CLOUD_PATH, "Positive Keywords")
+        NegativeUrl = generate_word_cloud(all_negative_keywords, NEGATIVE_WORD_CLOUD_PATH, "Negative Keywords")
 
         # Audience Demographics
         feedback_records = db.query(FeedbackModel).filter(
@@ -319,11 +347,13 @@ def get_transcription_analytics(
 
 @router.get("/transcriptions-chart")
 def get_transcriptions_chart(
-    time_period: str = Query("week", description="Filter by 'week', 'month', or 'year'"),
     store_id: Optional[str] = Query(None, description="Store ID to filter by"),
     region_id: Optional[str] = Query(None, description="Region ID to filter by"),
+    state_id: Optional[str] = Query(None, description="State ID to filter by"),
+    city_id: Optional[str] = Query(None, description="City ID to filter by"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    timeline: Optional[str] = Query(None, description="Timeline e.g. Last 7 days, Last 30 days, Previous month, Last 90 days, Last 365 days, All time"),
     db: Session = Depends(get_session),
     token: dict = Depends(verify_token),
 ):
@@ -343,28 +373,30 @@ def get_transcriptions_chart(
         if not current_user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if start_date and end_date:
-            try:
-                start_date_obj = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%SZ")
-                end_date_obj = datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%SZ")
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DDTHH:MM:SSZ")
-        else:
-            today = datetime.utcnow().date()
-            if time_period == "week":
-                start_date_obj = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
-                end_date_obj = datetime.combine(today, datetime.max.time())
-            elif time_period == "month":
-                start_date_obj = datetime.combine(today.replace(day=1), datetime.min.time())
-                end_date_obj = datetime.combine(today, datetime.max.time())
-            elif time_period == "year":
-                start_date_obj = datetime.combine(today.replace(month=1, day=1), datetime.min.time())
-                end_date_obj = datetime.combine(today, datetime.max.time())
+        # Parse date range or fallback to timeline
+        try:
+            if not start_date or not end_date:
+                start_date_obj, end_date_obj = parse_timeline(timeline)
             else:
-                raise HTTPException(status_code=400, detail="Invalid time period. Use 'week', 'month', or 'year'")
+                start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+                end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
 
-        # Build list of user IDs to include (downline + self)
-        if region_id:
+                if start_date_obj > end_date_obj:
+                    raise HTTPException(status_code=400, detail="Start date must be before end date")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+        # Determine downline users based on filters
+        users = []
+
+        if city_id:
+            l1_users = db.query(L1).filter(L1.L1_id == city_id).all()
+            users = [u for l1 in l1_users for u in extract_users(l1.user_id, RoleEnum.L1, db)]
+        elif state_id:
+            l3_users = db.query(L3).filter(L3.L3_id == state_id).all()
+            users = [u for l3 in l3_users for u in extract_users(l3.user_id, RoleEnum.L3, db)]
+        elif region_id:
             if user_role in [RoleEnum.L0, RoleEnum.L1]:
                 raise HTTPException(status_code=403, detail="L0 and L1 users cannot filter by regional ID.")
             l2_region = db.query(L2).filter(L2.L2_id == region_id).first()
@@ -373,11 +405,12 @@ def get_transcriptions_chart(
             if user_role == RoleEnum.L2 and l2_region.user_id != user_id:
                 raise HTTPException(status_code=403, detail="L2 users can only access their own region.")
             regional_user_id = l2_region.user_id
-            user_ids = [u.user_id for u in extract_users(regional_user_id, RoleEnum.L2, db)]
-            user_ids.append(regional_user_id)
+            users = extract_users(regional_user_id, RoleEnum.L2, db)
         else:
-            user_ids = [u.user_id for u in extract_users(user_id, user_role, db)]
-            user_ids.append(user_id)
+            users = extract_users(user_id, user_role, db)
+
+        user_ids = [u.user_id for u in users]
+        user_ids.append(user_id)
 
         # Query voice recordings for those user IDs
         base_query = db.query(VoiceRecording).filter(
